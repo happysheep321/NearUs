@@ -55,7 +55,7 @@ echo ""
 
 # 启动后端（后台运行）
 source venv/bin/activate
-python simple_app.py &
+python app.py &
 BACKEND_PID=$!
 
 # 等待后端启动
