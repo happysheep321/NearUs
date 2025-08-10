@@ -7,7 +7,7 @@ Write-Host "        NearUs Backend Service" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 切换到项目根目录
+# Switch to project root directory
 Set-Location $PSScriptRoot
 
 Write-Host "Activating virtual environment..." -ForegroundColor Green
@@ -17,23 +17,23 @@ Write-Host "Starting backend service on port 5000..." -ForegroundColor Green
 Write-Host "Window Title: NearUs - Backend Service" -ForegroundColor Yellow
 Write-Host ""
 
-# 创建一个定时器来保持窗口标题
+# Create a timer to maintain window title
 $timer = New-Object System.Timers.Timer
-$timer.Interval = 1000  # 每秒执行一次
+$timer.Interval = 1000  # Execute every second
 $timer.AutoReset = $true
 $timer.Add_Elapsed({
     $host.UI.RawUI.WindowTitle = "NearUs - Backend Service"
 })
 
-# 启动定时器
+# Start timer
 $timer.Start()
 
 try {
-    # 启动后端服务
+    # Start backend service
     python app.py
 }
 finally {
-    # 停止定时器
+    # Stop timer
     $timer.Stop()
     $timer.Dispose()
 }

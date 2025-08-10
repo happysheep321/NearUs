@@ -7,10 +7,24 @@ echo        NeighborAPP Startup Script
 echo ========================================
 echo.
 
+:: Update Python PATH to use Python 3.12
+set "PYTHON_PATH=C:\Program Files\Python312"
+set "PYTHON_SCRIPTS=C:\Program Files\Python312\Scripts"
+set "USER_PYTHON_SCRIPTS=C:\Users\LEGION\AppData\Roaming\Python\Python312\Scripts"
+
+if exist "%PYTHON_PATH%\python.exe" (
+    set "PATH=%PYTHON_PATH%;%PYTHON_SCRIPTS%;%USER_PYTHON_SCRIPTS%;%PATH%"
+    echo Updated PATH to use Python 3.12
+) else (
+    echo Warning: Python 3.12 not found at %PYTHON_PATH%
+    echo Using system Python
+    set "PATH=%USER_PYTHON_SCRIPTS%;%PATH%"
+)
+
 :: Check Python environment
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Python not detected, please install Python 3.7+
+    echo ERROR: Python not detected, please install Python 3.12+
     pause
     exit /b 1
 )
@@ -42,7 +56,7 @@ echo Checking pip version...
 python -m pip install --upgrade pip >nul 2>&1
 
 echo Installing Python dependencies...
-pip install -r requirements.txt
+pip install -r requirements.txt --no-warn-script-location
 if errorlevel 1 (
     echo.
     echo ERROR: Python dependencies installation failed

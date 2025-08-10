@@ -21,6 +21,11 @@ if exist "venv" (
 
 echo.
 echo Creating new virtual environment...
+
+:: Update Python PATH to include user scripts
+set "USER_PYTHON_SCRIPTS=C:\Users\LEGION\AppData\Roaming\Python\Python312\Scripts"
+set "PATH=%USER_PYTHON_SCRIPTS%;%PATH%"
+
 python -m venv venv
 if errorlevel 1 (
     echo ERROR: Virtual environment creation failed
@@ -39,7 +44,7 @@ python -m pip install --upgrade pip
 
 echo.
 echo Installing Python dependencies...
-pip install -r requirements.txt
+pip install -r requirements.txt --no-warn-script-location
 if errorlevel 1 (
     echo ERROR: Python dependencies installation failed
     pause

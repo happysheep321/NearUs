@@ -1,451 +1,328 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useDropzone } from 'react-dropzone';
+import { motion } from 'framer-motion';
 
-const ImageWall = () => {
-  const [images, setImages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [showUpload, setShowUpload] = useState(false);
-  const [filter, setFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const fileInputRef = useRef(null);
+// 图片墙页面
+function ImageWall() {
+  const [images, setImages] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showUpload, setShowUpload] = React.useState(false);
+  const [selectedFile, setSelectedFile] = React.useState(null);
+  const [uploadDescription, setUploadDescription] = React.useState('');
+  const [filter, setFilter] = React.useState('all');
+  const [searchQuery, setSearchQuery] = React.useState('');
 
-  useEffect(() => {
-    fetchImages();
-  }, [filter]);
-
-  const fetchImages = async () => {
-    try {
-      const response = await axios.get(`/api/images?filter=${filter}`);
-      setImages(response.data);
-      setLoading(false);
-    } catch (error) {
-      console.error('获取图片失败:', error);
-      setLoading(false);
-    }
-  };
-
-  const onDrop = async (acceptedFiles) => {
-    setUploading(true);
-    const formData = new FormData();
-    
-    acceptedFiles.forEach(file => {
-      formData.append('images', file);
-    });
-
-    try {
-      const response = await axios.post('/api/images/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      
-      setImages(prev => [...response.data, ...prev]);
-      setShowUpload(false);
-    } catch (error) {
-      console.error('上传失败:', error);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp']
+  // 开源图片素材
+  const sampleImages = [
+    {
+      id: 1,
+      url: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400&h=400&fit=crop',
+      description: '美丽的社区花园，绿意盎然',
+      uploader: { username: '园艺爱好者' },
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+      likes_count: 15,
+      is_liked: false
     },
-    multiple: true
+    {
+      id: 2,
+      url: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop',
+      description: '邻里音乐分享会现场，大家其乐融融',
+      uploader: { username: '音乐达人' },
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+      likes_count: 28,
+      is_liked: true
+    },
+    {
+      id: 3,
+      url: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=400&fit=crop',
+      description: '晨跑健身团，健康生活从运动开始',
+      uploader: { username: '健身教练' },
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
+      likes_count: 42,
+      is_liked: false
+    },
+    {
+      id: 4,
+      url: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=400&fit=crop',
+      description: '老年人智能手机课堂，科技助老',
+      uploader: { username: '数字助老' },
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+      likes_count: 35,
+      is_liked: false
+    },
+    {
+      id: 5,
+      url: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=400&h=400&fit=crop',
+      description: '社区烧烤派对，美食与友谊',
+      uploader: { username: '美食家' },
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString(),
+      likes_count: 56,
+      is_liked: true
+    },
+    {
+      id: 6,
+      url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=400&fit=crop',
+      description: '社区读书会，知识分享的快乐',
+      uploader: { username: '书香门第' },
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+      likes_count: 23,
+      is_liked: false
+    }
+  ];
+
+  React.useEffect(() => {
+    loadImages();
+  }, []);
+
+  const loadImages = async () => {
+    try {
+      const { data } = await axios.get('/image-wall');
+      if (data.length === 0) {
+        setImages(sampleImages);
+      } else {
+        setImages(data);
+      }
+    } catch (error) {
+      console.error('加载图片失败:', error);
+      setImages(sampleImages);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const uploadImage = async () => {
+    if (!selectedFile) return;
+    
+    const formData = new FormData();
+    formData.append('image', selectedFile);
+    formData.append('description', uploadDescription);
+    
+    try {
+      await axios.post('/image-wall/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSelectedFile(null);
+      setUploadDescription('');
+      setShowUpload(false);
+      loadImages();
+      // 这里需要从父组件传入showToast函数
+      if (window.showToast) {
+        window.showToast('图片上传成功！', 'success');
+      }
+    } catch (error) {
+      console.error('上传图片失败:', error);
+      if (window.showToast) {
+        window.showToast('上传图片失败', 'error');
+      }
+    }
+  };
+
+  const likeImage = async (id) => {
+    try {
+      await axios.post(`/image-wall/${id}/like`);
+      loadImages();
+    } catch (error) {
+      if (window.showToast) {
+        window.showToast('操作失败', 'error');
+      }
+    }
+  };
+
+  const filteredImages = images.filter(image => {
+    const matchesSearch = image.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         image.uploader?.username.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch;
   });
 
-  const likeImage = async (imageId) => {
-    try {
-      await axios.post(`/api/images/${imageId}/like`);
-      setImages(prev => 
-        prev.map(img => 
-          img.id === imageId 
-            ? { ...img, likes: img.likes + 1, liked: true }
-            : img
-        )
-      );
-    } catch (error) {
-      console.error('点赞失败:', error);
-    }
+  const getStats = () => {
+    const total = images.length;
+    const totalLikes = images.reduce((sum, img) => sum + (img.likes_count || 0), 0);
+    const myLikes = images.filter(img => img.is_liked).length;
+    return { total, totalLikes, myLikes };
   };
 
-  const unlikeImage = async (imageId) => {
-    try {
-      await axios.delete(`/api/images/${imageId}/like`);
-      setImages(prev => 
-        prev.map(img => 
-          img.id === imageId 
-            ? { ...img, likes: img.likes - 1, liked: false }
-            : img
-        )
-      );
-    } catch (error) {
-      console.error('取消点赞失败:', error);
-    }
-  };
+  const stats = getStats();
 
-  const addComment = async (imageId, comment) => {
-    try {
-      const response = await axios.post(`/api/images/${imageId}/comments`, { comment });
-      setImages(prev => 
-        prev.map(img => 
-          img.id === imageId 
-            ? { ...img, comments: [...img.comments, response.data] }
-            : img
-        )
-      );
-    } catch (error) {
-      console.error('添加评论失败:', error);
-    }
-  };
-
-  const deleteImage = async (imageId) => {
-    try {
-      await axios.delete(`/api/images/${imageId}`);
-      setImages(prev => prev.filter(img => img.id !== imageId));
-      setSelectedImage(null);
-    } catch (error) {
-      console.error('删除图片失败:', error);
-    }
-  };
-
-  const filteredImages = images.filter(image => 
-    image.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    image.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    image.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+  if (loading) return (
+    <div className="fade-in">
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>加载图片墙中...</p>
+      </div>
+    </div>
   );
 
-  const formatTime = (timestamp) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diff = now - time;
-    
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-    
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    if (hours < 24) return `${hours}小时前`;
-    if (days < 7) return `${days}天前`;
-    return time.toLocaleDateString();
-  };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">图片分享墙</h1>
-        
-        {/* 统计卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {images.length}
-            </div>
-            <div className="text-sm text-gray-600">总图片</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-red-600">
-              {images.reduce((sum, img) => sum + img.likes, 0)}
-            </div>
-            <div className="text-sm text-gray-600">总点赞</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">
-              {images.reduce((sum, img) => sum + img.comments.length, 0)}
-            </div>
-            <div className="text-sm text-gray-600">总评论</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-purple-600">
-              {new Set(images.map(img => img.user_id)).size}
-            </div>
-            <div className="text-sm text-gray-600">分享用户</div>
-          </div>
+    <div className="fade-in">
+      {/* 页面头部 */}
+      <div className="page-header image-wall-header">
+        <div className="header-content">
+          <h1>📷 图片墙</h1>
+          <p>分享美好瞬间，记录社区生活</p>
         </div>
+        <button 
+          className="btn btn-primary btn-large image-upload-btn"
+          onClick={() => setShowUpload(true)}
+        >
+          <span className="btn-icon">📤</span>
+          上传图片
+        </button>
+      </div>
 
-        {/* 搜索和筛选 */}
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="搜索图片、标签或描述..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">全部</option>
-              <option value="recent">最新</option>
-              <option value="popular">最热</option>
-              <option value="mine">我的</option>
-            </select>
-            <button
-              onClick={() => setShowUpload(true)}
-              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              上传图片
-            </button>
-          </div>
+      {/* 统计卡片 */}
+      <div className="image-wall-stats">
+        <div className="stat-item">
+          <div className="stat-number">{stats.total}</div>
+          <div className="stat-label">总图片</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-number">{stats.totalLikes}</div>
+          <div className="stat-label">总点赞</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-number">{stats.myLikes}</div>
+          <div className="stat-label">我的点赞</div>
         </div>
       </div>
 
-      {/* 上传区域 */}
-      <AnimatePresence>
-        {showUpload && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="bg-white rounded-lg shadow-lg p-6 mb-6"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">上传图片</h2>
-              <button
-                onClick={() => setShowUpload(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div
-              {...getRootProps()}
-              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <input {...getInputProps()} />
-              {uploading ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
-                  <span>上传中...</span>
-                </div>
-              ) : (
-                <div>
-                  <div className="text-4xl mb-4">📷</div>
-                  <p className="text-gray-600">
-                    {isDragActive ? '释放文件以上传' : '拖拽图片到此处，或点击选择文件'}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-2">
-                    支持 JPG, PNG, GIF, WebP 格式
-                  </p>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* 搜索框 */}
+      <div className="image-wall-search">
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="搜索图片描述或上传者..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+          <span className="search-icon">🔍</span>
+        </div>
+      </div>
 
-      {/* 图片网格 */}
-      <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-4">
-        {filteredImages.map((image, index) => (
-          <motion.div
-            key={image.id}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: index * 0.1 }}
-            className="break-inside-avoid mb-4 bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow cursor-pointer"
-            onClick={() => setSelectedImage(image)}
-          >
-            <div className="relative group">
-              <img
-                src={image.url}
-                alt={image.title}
-                className="w-full h-auto object-cover"
-                loading="lazy"
-              />
-              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center">
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-white text-center">
-                  <div className="text-2xl mb-2">👁️</div>
-                  <div>查看详情</div>
+      {/* 图片瀑布流 */}
+      <div className="image-wall-grid">
+        {filteredImages.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">📷</div>
+            <h3>暂无图片</h3>
+            <p>{searchQuery ? '没有找到匹配的图片' : '成为第一个分享图片的人吧！'}</p>
+          </div>
+        ) : (
+          filteredImages.map(image => (
+            <motion.div 
+              key={image.id} 
+              className="image-card"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="image-container">
+                <img src={image.url} alt={image.description} className="wall-image" />
+                <div className="image-overlay">
+                  <button 
+                    className={`like-button ${image.is_liked ? 'liked' : ''}`}
+                    onClick={() => likeImage(image.id)}
+                  >
+                    {image.is_liked ? '❤️' : '🤍'} {image.likes_count || 0}
+                  </button>
                 </div>
               </div>
-            </div>
-            
-            <div className="p-4">
-              <h3 className="font-semibold text-gray-800 mb-2">{image.title}</h3>
-              <p className="text-gray-600 text-sm mb-3 line-clamp-2">{image.description}</p>
-              
-              <div className="flex flex-wrap gap-1 mb-3">
-                {image.tags.map((tag, tagIndex) => (
-                  <span
-                    key={tagIndex}
-                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
-                  >
-                    #{tag}
+              <div className="image-info">
+                <p className="image-description">{image.description || '无描述'}</p>
+                <div className="image-meta">
+                  <span className="meta-item">
+                    <span className="meta-icon">👤</span>
+                    {image.uploader?.username || '未知'}
                   </span>
-                ))}
-              </div>
-              
-              <div className="flex items-center justify-between text-sm text-gray-500">
-                <div className="flex items-center space-x-4">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      image.liked ? unlikeImage(image.id) : likeImage(image.id);
-                    }}
-                    className={`flex items-center space-x-1 ${
-                      image.liked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
-                    }`}
-                  >
-                    <span>{image.liked ? '❤️' : '🤍'}</span>
-                    <span>{image.likes}</span>
-                  </button>
-                  <div className="flex items-center space-x-1">
-                    <span>💬</span>
-                    <span>{image.comments.length}</span>
-                  </div>
-                </div>
-                <span>{formatTime(image.created_at)}</span>
-              </div>
-              
-              <div className="flex items-center mt-3">
-                <img
-                  src={image.user_avatar || '/default-avatar.png'}
-                  alt={image.username}
-                  className="w-6 h-6 rounded-full mr-2"
-                />
-                <span className="text-sm text-gray-600">{image.username}</span>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* 图片详情模态框 */}
-      <AnimatePresence>
-        {selectedImage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={() => setSelectedImage(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <h2 className="text-2xl font-bold">{selectedImage.title}</h2>
-                  <button
-                    onClick={() => setSelectedImage(null)}
-                    className="text-gray-500 hover:text-gray-700 text-2xl"
-                  >
-                    ✕
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div>
-                    <img
-                      src={selectedImage.url}
-                      alt={selectedImage.title}
-                      className="w-full h-auto rounded-lg"
-                    />
-                  </div>
-                  
-                  <div>
-                    <p className="text-gray-600 mb-4">{selectedImage.description}</p>
-                    
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {selectedImage.tags.map((tag, index) => (
-                        <span
-                          key={index}
-                          className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                    
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-4">
-                        <button
-                          onClick={() => {
-                            selectedImage.liked ? unlikeImage(selectedImage.id) : likeImage(selectedImage.id);
-                            setSelectedImage(prev => ({
-                              ...prev,
-                              liked: !prev.liked,
-                              likes: prev.liked ? prev.likes - 1 : prev.likes + 1
-                            }));
-                          }}
-                          className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
-                            selectedImage.liked 
-                              ? 'bg-red-100 text-red-600' 
-                              : 'bg-gray-100 text-gray-600 hover:bg-red-100 hover:text-red-600'
-                          }`}
-                        >
-                          <span>{selectedImage.liked ? '❤️' : '🤍'}</span>
-                          <span>{selectedImage.likes}</span>
-                        </button>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <img
-                          src={selectedImage.user_avatar || '/default-avatar.png'}
-                          alt={selectedImage.username}
-                          className="w-8 h-8 rounded-full mr-2"
-                        />
-                        <span className="text-sm text-gray-600">{selectedImage.username}</span>
-                      </div>
-                    </div>
-                    
-                    <div className="border-t pt-4">
-                      <h3 className="font-semibold mb-3">评论 ({selectedImage.comments.length})</h3>
-                      <div className="space-y-3 max-h-48 overflow-y-auto">
-                        {selectedImage.comments.map((comment, index) => (
-                          <div key={index} className="flex items-start space-x-3">
-                            <img
-                              src={comment.user_avatar || '/default-avatar.png'}
-                              alt={comment.username}
-                              className="w-6 h-6 rounded-full"
-                            />
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <span className="font-semibold text-sm">{comment.username}</span>
-                                <span className="text-xs text-gray-500">{formatTime(comment.created_at)}</span>
-                              </div>
-                              <p className="text-sm text-gray-600">{comment.comment}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                  <span className="meta-item">
+                    <span className="meta-icon">📅</span>
+                    {new Date(image.created_at).toLocaleDateString()}
+                  </span>
                 </div>
               </div>
             </motion.div>
-          </motion.div>
+          ))
         )}
-      </AnimatePresence>
+      </div>
+
+      {/* 上传图片弹窗 */}
+      {showUpload && (
+        <div className="modal-overlay image-upload-modal" onClick={() => setShowUpload(false)}>
+          <div className="modal-content image-upload-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header image-upload-header">
+              <div className="header-left">
+                <h3>📤 上传图片</h3>
+                <p>分享你的美好瞬间，让社区更加精彩</p>
+              </div>
+            </div>
+            
+            <div className="modal-body image-upload-body">
+              <div className="upload-section">
+                <div className="upload-area">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setSelectedFile(e.target.files[0])}
+                    className="file-input"
+                    id="image-upload"
+                  />
+                  <label htmlFor="image-upload" className="upload-label">
+                    <div className="upload-icon">📷</div>
+                    <div className="upload-text">
+                      <h4>选择图片</h4>
+                      <p>点击选择或拖拽图片到此处</p>
+                    </div>
+                  </label>
+                  {selectedFile && (
+                    <div className="selected-file">
+                      <img src={URL.createObjectURL(selectedFile)} alt="预览" className="file-preview" />
+                      <span className="file-name">{selectedFile.name}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="form-section">
+                <div className="form-group">
+                  <label>图片描述</label>
+                  <textarea
+                    placeholder="描述这张图片的内容和故事..."
+                    value={uploadDescription}
+                    onChange={(e) => setUploadDescription(e.target.value)}
+                    className="form-textarea"
+                    rows="4"
+                  />
+                </div>
+              </div>
+              
+              <div className="upload-tips">
+                <div className="tip-item">
+                  <span className="tip-icon">💡</span>
+                  <span className="tip-text">添加有意义的描述，让更多人了解你的分享</span>
+                </div>
+                <div className="tip-item">
+                  <span className="tip-icon">📏</span>
+                  <span className="tip-text">建议图片尺寸不超过5MB，支持JPG、PNG格式</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer image-upload-footer">
+              <button className="btn btn-outline" onClick={() => setShowUpload(false)}>取消</button>
+              <button 
+                className="upload-submit-btn"
+                onClick={uploadImage}
+                disabled={!selectedFile}
+              >
+                <span className="btn-icon">📤</span>
+                上传图片
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}
 
 export default ImageWall;

@@ -1,355 +1,360 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
-import { io } from 'socket.io-client';
+import { motion } from 'framer-motion';
 
-const RealTimeNotifications = () => {
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [socket, setSocket] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const notificationRef = useRef(null);
+// 实时通知页面
+function RealTimeNotifications() {
+  const [notifications, setNotifications] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showSettings, setShowSettings] = React.useState(false);
+  const [filter, setFilter] = React.useState('all');
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [settings, setSettings] = React.useState({
+    push_enabled: true,
+    sound_enabled: true,
+    email_enabled: false
+  });
 
-  useEffect(() => {
-    // 初始化Socket连接
-    const newSocket = io('http://localhost:5000');
-    setSocket(newSocket);
+  // 示例通知数据
+  const sampleNotifications = [
+    {
+      id: 1,
+      title: '任务挑战完成',
+      message: '恭喜你完成了"晨跑健身"挑战，获得15积分奖励！',
+      type: 'task',
+      is_read: false,
+      created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+    },
+    {
+      id: 2,
+      title: '新活动通知',
+      message: '社区读书会将在明天下午2点开始，记得准时参加哦！',
+      type: 'activity',
+      is_read: false,
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
+    },
+    {
+      id: 3,
+      title: '系统消息',
+      message: '你的账户已成功升级为VIP会员，享受更多特权服务。',
+      type: 'system',
+      is_read: true,
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString()
+    },
+    {
+      id: 4,
+      title: '好友邀请',
+      message: '张三邀请你成为好友，点击查看详情。',
+      type: 'message',
+      is_read: false,
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString()
+    },
+    {
+      id: 5,
+      title: '积分奖励',
+      message: '你获得了"积极参与"徽章，额外奖励10积分！',
+      type: 'reward',
+      is_read: true,
+      created_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString()
+    }
+  ];
 
-    // Socket事件监听
-    newSocket.on('connect', () => {
-      console.log('已连接到通知服务器');
-    });
-
-    newSocket.on('notification', (notification) => {
-      setNotifications(prev => [notification, ...prev]);
-      setUnreadCount(prev => prev + 1);
-    });
-
-    newSocket.on('online_users', (users) => {
-      setOnlineUsers(users);
-    });
-
-    newSocket.on('user_online', (user) => {
-      setOnlineUsers(prev => [...prev, user]);
-    });
-
-    newSocket.on('user_offline', (userId) => {
-      setOnlineUsers(prev => prev.filter(user => user.id !== userId));
-    });
-
-    // 获取历史通知
-    fetchNotifications();
-
-    return () => {
-      newSocket.disconnect();
-    };
+  React.useEffect(() => {
+    loadNotifications();
+    // 模拟实时更新
+    const interval = setInterval(loadNotifications, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    // 点击外部关闭通知面板
-    const handleClickOutside = (event) => {
-      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
-        setShowNotifications(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const fetchNotifications = async () => {
+  const loadNotifications = async () => {
     try {
-      const response = await axios.get('/api/notifications');
-      setNotifications(response.data.notifications);
-      setUnreadCount(response.data.unread_count);
-      setLoading(false);
+      const { data } = await axios.get('/real-time-notifications');
+      if (data.length === 0) {
+        setNotifications(sampleNotifications);
+      } else {
+        setNotifications(data);
+      }
     } catch (error) {
-      console.error('获取通知失败:', error);
+      console.error('加载通知失败:', error);
+      setNotifications(sampleNotifications);
+    } finally {
       setLoading(false);
     }
   };
 
-  const markAsRead = async (notificationId) => {
+  const markAsRead = async (id) => {
     try {
-      await axios.put(`/api/notifications/${notificationId}/read`);
-      setNotifications(prev => 
-        prev.map(notif => 
-          notif.id === notificationId 
-            ? { ...notif, read: true }
-            : notif
-        )
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      await axios.put(`/real-time-notifications/${id}/read`);
+      loadNotifications();
     } catch (error) {
-      console.error('标记已读失败:', error);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    try {
-      await axios.put('/api/notifications/read-all');
-      setNotifications(prev => 
-        prev.map(notif => ({ ...notif, read: true }))
-      );
-      setUnreadCount(0);
-    } catch (error) {
-      console.error('标记全部已读失败:', error);
-    }
-  };
-
-  const deleteNotification = async (notificationId) => {
-    try {
-      await axios.delete(`/api/notifications/${notificationId}`);
-      setNotifications(prev => prev.filter(notif => notif.id !== notificationId));
-      if (!notifications.find(n => n.id === notificationId)?.read) {
-        setUnreadCount(prev => Math.max(0, prev - 1));
+      if (window.showToast) {
+        window.showToast('操作失败', 'error');
       }
+    }
+  };
+
+  const updateSettings = async () => {
+    try {
+      await axios.put('/real-time-notifications/settings', settings);
+      if (window.showToast) {
+        window.showToast('设置已保存', 'success');
+      }
+      setShowSettings(false);
     } catch (error) {
-      console.error('删除通知失败:', error);
+      if (window.showToast) {
+        window.showToast('保存设置失败', 'error');
+      }
     }
   };
 
   const getNotificationIcon = (type) => {
     const icons = {
-      message: '💬',
+      task: '🎯',
       activity: '🎉',
-      reminder: '⏰',
-      achievement: '🏆',
+      message: '💬',
       system: '🔔',
-      business: '🏪',
-      event: '📅',
-      warning: '⚠️',
-      error: '❌'
+      reward: '⭐'
     };
-    return icons[type] || '📢';
+    return icons[type] || '🔔';
   };
 
   const getNotificationColor = (type) => {
     const colors = {
-      message: 'bg-blue-100 border-blue-200',
-      activity: 'bg-green-100 border-green-200',
-      reminder: 'bg-yellow-100 border-yellow-200',
-      achievement: 'bg-purple-100 border-purple-200',
-      system: 'bg-gray-100 border-gray-200',
-      business: 'bg-indigo-100 border-indigo-200',
-      event: 'bg-pink-100 border-pink-200',
-      warning: 'bg-orange-100 border-orange-200',
-      error: 'bg-red-100 border-red-200'
+      task: '#10b981',
+      activity: '#3b82f6',
+      message: '#8b5cf6',
+      system: '#f59e0b',
+      reward: '#fbbf24'
     };
-    return colors[type] || 'bg-gray-100 border-gray-200';
+    return colors[type] || '#6b7280';
   };
 
-  const formatTime = (timestamp) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diff = now - time;
-    
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-    
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    if (hours < 24) return `${hours}小时前`;
-    if (days < 7) return `${days}天前`;
-    return time.toLocaleDateString();
+  const filteredNotifications = notifications.filter(notification => {
+    const matchesFilter = filter === 'all' || notification.type === filter;
+    const matchesSearch = notification.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         notification.message.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+
+  const getStats = () => {
+    const total = notifications.length;
+    const unread = notifications.filter(n => !n.is_read).length;
+    const rewards = notifications.filter(n => n.type === 'reward').length;
+    return { total, unread, rewards };
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
+  const stats = getStats();
 
-  return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">实时通知系统</h1>
-        
-        {/* 统计卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {notifications.length}
-            </div>
-            <div className="text-sm text-gray-600">总通知</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-red-600">
-              {unreadCount}
-            </div>
-            <div className="text-sm text-gray-600">未读通知</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">
-              {onlineUsers.length}
-            </div>
-            <div className="text-sm text-gray-600">在线用户</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-purple-600">
-              {socket?.connected ? '🟢' : '🔴'}
-            </div>
-            <div className="text-sm text-gray-600">连接状态</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 通知列表 */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">通知列表</h2>
-              <div className="flex space-x-2">
-                {unreadCount > 0 && (
-                  <button
-                    onClick={markAllAsRead}
-                    className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                  >
-                    全部已读
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                >
-                  设置
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              <AnimatePresence>
-                {notifications.map((notification, index) => (
-                  <motion.div
-                    key={notification.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ delay: index * 0.1 }}
-                    className={`border rounded-lg p-4 ${getNotificationColor(notification.type)} ${
-                      !notification.read ? 'border-l-4 border-l-blue-500' : ''
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center mb-2">
-                          <span className="text-2xl mr-2">
-                            {getNotificationIcon(notification.type)}
-                          </span>
-                          <h3 className="font-semibold">{notification.title}</h3>
-                          {!notification.read && (
-                            <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full"></span>
-                          )}
-                        </div>
-                        <p className="text-gray-700 text-sm mb-2">{notification.message}</p>
-                        <div className="flex items-center justify-between text-xs text-gray-500">
-                          <span>{formatTime(notification.created_at)}</span>
-                          <div className="flex space-x-2">
-                            {!notification.read && (
-                              <button
-                                onClick={() => markAsRead(notification.id)}
-                                className="text-blue-600 hover:text-blue-800"
-                              >
-                                标记已读
-                              </button>
-                            )}
-                            <button
-                              onClick={() => deleteNotification(notification.id)}
-                              className="text-red-600 hover:text-red-800"
-                            >
-                              删除
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              
-              {notifications.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  暂无通知
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 在线用户 */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">在线用户</h2>
-            <div className="space-y-3">
-              {onlineUsers.map((user, index) => (
-                <motion.div
-                  key={user.id}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="flex items-center p-3 bg-green-50 rounded-lg border border-green-200"
-                >
-                  <div className="w-3 h-3 bg-green-500 rounded-full mr-3 animate-pulse"></div>
-                  <div className="flex-1">
-                    <div className="font-semibold text-green-800">{user.username}</div>
-                    <div className="text-sm text-green-600">{user.role}</div>
-                  </div>
-                  <div className="text-xs text-green-500">
-                    {formatTime(user.last_seen)}
-                  </div>
-                </motion.div>
-              ))}
-              
-              {onlineUsers.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  暂无在线用户
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 通知设置 */}
-          {showNotifications && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-lg shadow-lg p-6 mt-6"
-            >
-              <h3 className="text-lg font-semibold mb-4">通知设置</h3>
-              <div className="space-y-3">
-                <label className="flex items-center">
-                  <input type="checkbox" className="mr-2" defaultChecked />
-                  <span>消息通知</span>
-                </label>
-                <label className="flex items-center">
-                  <input type="checkbox" className="mr-2" defaultChecked />
-                  <span>活动提醒</span>
-                </label>
-                <label className="flex items-center">
-                  <input type="checkbox" className="mr-2" defaultChecked />
-                  <span>成就通知</span>
-                </label>
-                <label className="flex items-center">
-                  <input type="checkbox" className="mr-2" defaultChecked />
-                  <span>系统通知</span>
-                </label>
-                <label className="flex items-center">
-                  <input type="checkbox" className="mr-2" />
-                  <span>声音提醒</span>
-                </label>
-              </div>
-            </motion.div>
-          )}
-        </div>
+  if (loading) return (
+    <div className="fade-in">
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>加载通知中...</p>
       </div>
     </div>
   );
-};
+
+  return (
+    <div className="fade-in">
+      {/* 页面头部 */}
+      <div className="page-header notifications-header">
+        <div className="header-content">
+          <h1>🔔 实时通知</h1>
+          <p>及时获取社区最新动态和重要消息</p>
+        </div>
+        <button 
+          className="btn btn-outline btn-large notifications-settings-btn"
+          onClick={() => setShowSettings(true)}
+        >
+          <span className="btn-icon">⚙️</span>
+          设置
+        </button>
+      </div>
+
+      {/* 通知统计 */}
+      <div className="notifications-stats">
+        <div className="stat-item">
+          <div className="stat-number">{stats.total}</div>
+          <div className="stat-label">总通知</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-number">{stats.unread}</div>
+          <div className="stat-label">未读</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-number">{stats.rewards}</div>
+          <div className="stat-label">奖励</div>
+        </div>
+      </div>
+
+      {/* 搜索和筛选 */}
+      <div className="notifications-filter">
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="搜索通知内容..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+          <span className="search-icon">🔍</span>
+        </div>
+        
+        <div className="filter-tabs">
+          <button 
+            className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
+            onClick={() => setFilter('all')}
+          >
+            <span className="tab-icon">📋</span>
+            <span className="tab-text">全部</span>
+          </button>
+          <button 
+            className={`filter-tab ${filter === 'task' ? 'active' : ''}`}
+            onClick={() => setFilter('task')}
+          >
+            <span className="tab-icon">🎯</span>
+            <span className="tab-text">任务</span>
+          </button>
+          <button 
+            className={`filter-tab ${filter === 'activity' ? 'active' : ''}`}
+            onClick={() => setFilter('activity')}
+          >
+            <span className="tab-icon">🎉</span>
+            <span className="tab-text">活动</span>
+          </button>
+          <button 
+            className={`filter-tab ${filter === 'reward' ? 'active' : ''}`}
+            onClick={() => setFilter('reward')}
+          >
+            <span className="tab-icon">⭐</span>
+            <span className="tab-text">奖励</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 通知列表 */}
+      <div className="notifications-list">
+        {filteredNotifications.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🔔</div>
+            <h3>暂无通知</h3>
+            <p>{searchQuery ? '没有找到匹配的通知' : '有新的社区动态时会在这里显示'}</p>
+          </div>
+        ) : (
+          filteredNotifications.map(notification => (
+            <motion.div 
+              key={notification.id} 
+              className={`notification-item ${!notification.is_read ? 'unread' : ''}`}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div 
+                className="notification-icon"
+                style={{ color: getNotificationColor(notification.type) }}
+              >
+                {getNotificationIcon(notification.type)}
+              </div>
+              <div className="notification-content">
+                <div className="notification-title">{notification.title}</div>
+                <div className="notification-message">{notification.message}</div>
+                <div className="notification-time">
+                  {new Date(notification.created_at).toLocaleString()}
+                </div>
+              </div>
+              <div className="notification-actions">
+                {!notification.is_read && (
+                  <button 
+                    className="btn btn-small btn-outline mark-read-btn"
+                    onClick={() => markAsRead(notification.id)}
+                  >
+                    标记已读
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          ))
+        )}
+      </div>
+
+      {/* 设置弹窗 */}
+      {showSettings && (
+        <div className="modal-overlay notifications-settings-modal" onClick={() => setShowSettings(false)}>
+          <div className="modal-content notifications-settings-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header notifications-settings-header">
+              <div className="header-left">
+                <h3>⚙️ 通知设置</h3>
+                <p>自定义你的通知偏好设置</p>
+              </div>
+            </div>
+            
+            <div className="modal-body notifications-settings-body">
+              <div className="settings-section">
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>推送通知</label>
+                    <p>接收实时推送消息</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.push_enabled}
+                    onChange={(e) => setSettings({...settings, push_enabled: e.target.checked})}
+                    className="setting-toggle"
+                  />
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>声音提醒</label>
+                    <p>收到通知时播放声音</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.sound_enabled}
+                    onChange={(e) => setSettings({...settings, sound_enabled: e.target.checked})}
+                    className="setting-toggle"
+                  />
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>邮件通知</label>
+                    <p>重要通知发送到邮箱</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.email_enabled}
+                    onChange={(e) => setSettings({...settings, email_enabled: e.target.checked})}
+                    className="setting-toggle"
+                  />
+                </div>
+              </div>
+              
+              <div className="settings-tips">
+                <div className="tip-item">
+                  <span className="tip-icon">💡</span>
+                  <span className="tip-text">开启推送通知可以及时收到重要消息</span>
+                </div>
+                <div className="tip-item">
+                  <span className="tip-icon">🔊</span>
+                  <span className="tip-text">声音提醒适合在安静环境下使用</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer notifications-settings-footer">
+              <button className="btn btn-outline" onClick={() => setShowSettings(false)}>取消</button>
+              <button 
+                className="settings-submit-btn"
+                onClick={updateSettings}
+              >
+                <span className="btn-icon">💾</span>
+                保存设置
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default RealTimeNotifications;

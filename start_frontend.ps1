@@ -7,21 +7,21 @@ Write-Host "        NearUs Frontend Service" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 切换到前端目录
+# Switch to frontend directory
 Set-Location "$PSScriptRoot\frontend"
 
 Write-Host "Starting frontend service on port 3000..." -ForegroundColor Green
 Write-Host "Window Title: NearUs - Frontend Service" -ForegroundColor Yellow
 Write-Host ""
 
-# 显示一个持续的信息栏
+# Display a continuous information bar
 Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Magenta
 Write-Host "║                    NearUs - Frontend Service                ║" -ForegroundColor Magenta
-Write-Host "║                    正在运行中...                            ║" -ForegroundColor Magenta
+Write-Host "║                    Running...                               ║" -ForegroundColor Magenta
 Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Magenta
 Write-Host ""
 
-# 启动前端服务
+# Start frontend service
 npm start
 
 Write-Host ""

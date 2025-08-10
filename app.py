@@ -10,7 +10,7 @@ import string
 from datetime import datetime, timedelta
 from typing import Optional
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template, send_from_directory
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from flask_jwt_extended import (
@@ -21,7 +21,97 @@ from flask_jwt_extended import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from werkzeug.utils import secure_filename
+import uuid
+# 尝试导入valx，如果失败则使用自定义实现
+try:
+    import valx
+    valx_available = True
+    print("valx导入成功，使用valx敏感词过滤器")
+except Exception as e:
+    print(f"valx导入失败，使用自定义敏感词过滤器: {e}")
+    valx_available = False
 
+# 中文敏感词列表
+chinese_sensitive_words = [
+    '政治', '政府', '领导人', '国家', '党', '军队', '警察', '法律', '宪法',
+    '杀', '死', '暴力', '打架', '斗殴', '伤害', '攻击', '武器', '枪', '刀',
+    '色情', '黄色', '成人', '性', '裸', '情色', '色情网站',
+    '赌博', '博彩', '赌场', '彩票', '六合彩', '时时彩',
+    '毒品', '吸毒', '大麻', '冰毒', '海洛因', '摇头丸',
+    '诈骗', '传销', '非法集资', '中奖', '免费', '赚钱', '兼职',
+    '自杀', '自残', '恐怖', '爆炸', '炸弹', '病毒', '黑客'
+]
+
+def check_sensitive_content(content):
+    """检查内容是否包含敏感词"""
+    if not content:
+        return {
+            'is_safe': True,
+            'filtered_content': content,
+            'found_words': [],
+            'original_content': content
+        }
+    
+    if valx_available:
+        # 使用valx检查敏感词
+        try:
+            # 使用valx的detect_profanity函数
+            text_data = [content]
+            result = valx.detect_profanity(text_data, custom_words_list=chinese_sensitive_words)
+            
+            if result:
+                # 获取找到的敏感词
+                found_words = [item['Word'] for item in result]
+                # 使用valx的remove_profanity函数过滤内容
+                filtered_data = valx.remove_profanity(text_data, custom_words_list=chinese_sensitive_words)
+                filtered_content = filtered_data[0] if filtered_data else content
+                
+                return {
+                    'is_safe': False,
+                    'filtered_content': filtered_content,
+                    'found_words': found_words,
+                    'original_content': content
+                }
+            else:
+                return {
+                    'is_safe': True,
+                    'filtered_content': content,
+                    'found_words': [],
+                    'original_content': content
+                }
+        except Exception as e:
+            print(f"valx过滤失败，使用自定义实现: {e}")
+            # 如果valx失败，回退到自定义实现
+            pass
+    
+    # 自定义敏感词检查实现
+    found_words = []
+    filtered_content = content
+    
+    for word in chinese_sensitive_words:
+        if word in content:
+            found_words.append(word)
+            filtered_content = filtered_content.replace(word, '*' * len(word))
+    
+    return {
+        'is_safe': len(found_words) == 0,
+        'filtered_content': filtered_content,
+        'found_words': found_words,
+        'original_content': content
+    }
+
+# 角色常量
+ROLES = {
+    'ADMIN': 'admin',
+    'MODERATOR': 'moderator', 
+    'MERCHANT': 'merchant',
+    'USER': 'user'
+}
+
+def has_role(user, role):
+    """检查用户是否具有指定角色"""
+    return user and user.user_type == role
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -2603,18 +2693,40 @@ def get_user_stats():
     })
 
 
-@app.route("/api/quests", methods=["GET"])
+@app.route("/api/quests", methods=["GET", "POST"])
 @jwt_required()
 def get_quests():
-    user = current_user()
-    category = request.args.get('category', 'all')
+    if request.method == "GET":
+        user = current_user()
+        category = request.args.get('category', 'all')
+        
+        query = Quest.query.filter_by(is_active=True)
+        if category != 'all':
+            query = query.filter_by(quest_type=category)
+        
+        quests = query.all()
+        return jsonify([quest.to_dict() for quest in quests])
     
-    query = Quest.query.filter_by(is_active=True)
-    if category != 'all':
-        query = query.filter_by(quest_type=category)
-    
-    quests = query.all()
-    return jsonify([quest.to_dict() for quest in quests])
+    elif request.method == "POST":
+        user = current_user()
+        data = request.json
+        
+        # 创建新任务
+        quest = Quest(
+            title=data.get('title'),
+            description=data.get('description'),
+            quest_type=data.get('category', 'daily'),
+            target=data.get('target', 1),
+            reward=data.get('reward_points', 10),
+            category=data.get('category', 'general'),
+            is_active=True,
+            is_repeatable=data.get('is_repeatable', True)
+        )
+        
+        db.session.add(quest)
+        db.session.commit()
+        
+        return jsonify(quest.to_dict()), 201
 
 
 @app.route("/api/user/quests", methods=["GET"])
@@ -2969,10 +3081,237 @@ def handle_send_notification(data):
         # 发送实时通知给指定用户
         emit('new_notification', notification.to_dict(), room=f'user_{user_id}')
 
+# 敏感词检查API
+@app.route("/api/content/check", methods=["POST"])
+@jwt_required()
+def check_content():
+    """检查内容是否包含敏感词"""
+    data = request.get_json()
+    content = data.get('content', '')
+    
+    if not content:
+        return jsonify({"error": "内容不能为空"}), 400
+    
+    result = check_sensitive_content(content)
+    return jsonify(result)
+
+# 敏感词管理API
+@app.route("/api/admin/sensitive-words", methods=["GET"])
+@jwt_required()
+def get_sensitive_words():
+    """获取敏感词列表（仅管理员）"""
+    user = current_user()
+    if not has_role(user, ROLES.ADMIN):
+        return jsonify({"error": "权限不足"}), 403
+    
+    return jsonify({
+        "sensitive_words": chinese_sensitive_words,
+        "total_count": len(chinese_sensitive_words)
+    })
+
+@app.route("/api/admin/sensitive-words", methods=["POST"])
+@jwt_required()
+def add_sensitive_word():
+    """添加敏感词（仅管理员）"""
+    user = current_user()
+    if not has_role(user, ROLES.ADMIN):
+        return jsonify({"error": "权限不足"}), 403
+    
+    data = request.get_json()
+    word = data.get('word', '').strip()
+    
+    if not word:
+        return jsonify({"error": "敏感词不能为空"}), 400
+    
+    if word in chinese_sensitive_words:
+        return jsonify({"error": "敏感词已存在"}), 400
+    
+    chinese_sensitive_words.append(word)
+    
+    # valx会自动使用更新后的chinese_sensitive_words列表
+    
+    return jsonify({"message": "敏感词添加成功", "word": word})
+
+@app.route("/api/admin/sensitive-words/<word>", methods=["DELETE"])
+@jwt_required()
+def delete_sensitive_word(word):
+    """删除敏感词（仅管理员）"""
+    user = current_user()
+    if not has_role(user, ROLES.ADMIN):
+        return jsonify({"error": "权限不足"}), 403
+    
+    if word not in chinese_sensitive_words:
+        return jsonify({"error": "敏感词不存在"}), 404
+    
+    chinese_sensitive_words.remove(word)
+    
+    # valx会自动使用更新后的chinese_sensitive_words列表
+    
+    return jsonify({"message": "敏感词删除成功", "word": word})
+
 def _ensure_db_initialized():
     with app.app_context():
         db.create_all()
         print("Database initialized")
+
+
+# 添加缺失的API端点
+
+@app.route("/image-wall", methods=["GET"])
+@jwt_required(optional=True)
+def get_image_wall():
+    """获取图片墙数据"""
+    user = current_user() if request.headers.get('Authorization') else None
+    
+    # 获取公开的图片
+    images = Image.query.filter_by(is_public=True).order_by(Image.created_at.desc()).limit(50).all()
+    
+    result = []
+    for image in images:
+        image_dict = image.to_dict()
+        
+        # 检查当前用户是否点赞
+        if user:
+            liked = ImageLike.query.filter_by(
+                image_id=image.id, user_id=user.id
+            ).first() is not None
+            image_dict["liked"] = liked
+        
+        # 加载评论
+        comments = ImageComment.query.filter_by(image_id=image.id).limit(10).all()
+        image_dict["comments"] = [comment.to_dict() for comment in comments]
+        
+        result.append(image_dict)
+    
+    return jsonify(result)
+
+
+@app.route("/image-wall/upload", methods=["POST"])
+@jwt_required()
+def upload_image_wall():
+    """上传图片到图片墙"""
+    user = current_user()
+    
+    if 'images' not in request.files:
+        return jsonify({"error": "No images provided"}), 400
+    
+    files = request.files.getlist('images')
+    uploaded_images = []
+    
+    for file in files:
+        if file.filename == '':
+            continue
+        
+        # 生成文件名
+        filename = f"image_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+        
+        image = Image(
+            user_id=user.id,
+            title=request.form.get('title', ''),
+            description=request.form.get('description', ''),
+            url=f"/uploads/{filename}",
+            tags=json.dumps(request.form.get('tags', '').split(','))
+        )
+        
+        db.session.add(image)
+        uploaded_images.append(image)
+    
+    db.session.commit()
+    
+    return jsonify([img.to_dict() for img in uploaded_images])
+
+
+@app.route("/image-wall/<int:image_id>/like", methods=["POST"])
+@jwt_required()
+def like_image_wall(image_id):
+    """点赞图片墙图片"""
+    user = current_user()
+    image = Image.query.get_or_404(image_id)
+    
+    # 检查是否已经点赞
+    existing_like = ImageLike.query.filter_by(
+        image_id=image_id, user_id=user.id
+    ).first()
+    
+    if existing_like:
+        return jsonify({"error": "Already liked"}), 400
+    
+    # 创建点赞
+    like = ImageLike(image_id=image_id, user_id=user.id)
+    db.session.add(like)
+    
+    # 更新图片点赞数
+    image.likes += 1
+    
+    db.session.commit()
+    
+    return jsonify({"message": "Image liked"})
+
+
+@app.route("/real-time-notifications", methods=["GET"])
+@jwt_required()
+def get_real_time_notifications():
+    """获取实时通知"""
+    user = current_user()
+    
+    # 获取用户的通知
+    notifications = Notification.query.filter_by(user_id=user.id).order_by(Notification.created_at.desc()).limit(50).all()
+    
+    return jsonify([notification.to_dict() for notification in notifications])
+
+
+@app.route("/real-time-notifications/<int:notification_id>/read", methods=["PUT"])
+@jwt_required()
+def mark_real_time_notification_read(notification_id):
+    """标记实时通知为已读"""
+    user = current_user()
+    notification = Notification.query.filter_by(id=notification_id, user_id=user.id).first_or_404()
+    
+    notification.is_read = True
+    db.session.commit()
+    
+    return jsonify({"message": "Notification marked as read"})
+
+
+@app.route("/real-time-notifications/settings", methods=["PUT"])
+@jwt_required()
+def update_notification_settings():
+    """更新通知设置"""
+    user = current_user()
+    settings = request.json
+    
+    # 这里可以添加用户通知设置的逻辑
+    # 暂时返回成功
+    return jsonify({"message": "Settings updated"})
+
+
+@app.route("/coupons/<int:coupon_id>/use", methods=["POST"])
+@jwt_required()
+def use_coupon(coupon_id):
+    """使用优惠券"""
+    user = current_user()
+    
+    # 检查用户是否拥有该优惠券
+    user_coupon = UserCoupon.query.filter_by(
+        user_id=user.id, 
+        coupon_id=coupon_id,
+        is_used=False
+    ).first()
+    
+    if not user_coupon:
+        return jsonify({"error": "Coupon not found or already used"}), 404
+    
+    # 标记为已使用
+    user_coupon.is_used = True
+    user_coupon.used_at = datetime.utcnow()
+    
+    # 更新优惠券使用次数
+    coupon = user_coupon.coupon
+    coupon.used_count += 1
+    
+    db.session.commit()
+    
+    return jsonify({"message": "Coupon used successfully"})
 
 
 if __name__ == "__main__":

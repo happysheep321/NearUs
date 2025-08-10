@@ -23,6 +23,7 @@ const BusinessMap = () => {
   const [businesses, setBusinesses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [userLocation, setUserLocation] = useState(null);
   const { auth } = useAuth();
   const { showToast } = useToast();
@@ -68,9 +69,13 @@ const BusinessMap = () => {
     }
   };
 
-  const filteredBusinesses = businesses.filter(business => 
-    selectedCategory === 'all' || business.category === selectedCategory
-  );
+  const filteredBusinesses = businesses.filter(business => {
+    const matchesCategory = selectedCategory === 'all' || business.category === selectedCategory;
+    const matchesSearch = business.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         business.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         business.address.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   const getCategoryIcon = (category) => {
     const cat = categories.find(c => c.value === category);
@@ -90,16 +95,46 @@ const BusinessMap = () => {
 
   if (loading || !userLocation) {
     return (
-      <div className="business-map-container">
-        <div className="loading">加载地图中...</div>
+      <div className="fade-in">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>加载地图中...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="business-map-container">
-      <div className="map-header">
-        <h2>🗺️ 本地商家地图</h2>
+    <div className="fade-in">
+      {/* 页面头部 */}
+      <div className="page-header">
+        <div className="header-content">
+          <h1>🗺️ 商家地图</h1>
+          <p>发现附近的优质商家和服务</p>
+        </div>
+        <div className="header-actions">
+          <button 
+            className="btn btn-outline btn-large"
+            onClick={() => getUserLocation()}
+          >
+            📍 重新定位
+          </button>
+        </div>
+      </div>
+
+      {/* 搜索和筛选 */}
+      <div className="search-filter-section">
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="搜索商家名称、描述或地址..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+          <span className="search-icon">🔍</span>
+        </div>
+        
         <div className="category-filter">
           {categories.map(category => (
             <motion.button
@@ -116,6 +151,7 @@ const BusinessMap = () => {
         </div>
       </div>
 
+      {/* 地图容器 */}
       <div className="map-container">
         <MapContainer
           center={userLocation}
@@ -175,43 +211,60 @@ const BusinessMap = () => {
         </MapContainer>
       </div>
 
-      <div className="business-list">
-        <h3>附近商家 ({filteredBusinesses.length})</h3>
-        <div className="business-cards">
-          {filteredBusinesses.map(business => (
-            <motion.div
-              key={business.id}
-              className="business-card"
-              whileHover={{ scale: 1.02 }}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <div className="business-card-header">
-                <span className="business-icon">{getCategoryIcon(business.category)}</span>
-                <h4>{business.name}</h4>
-                {business.is_verified && <span className="verified-badge">✓ 认证</span>}
-              </div>
-              <p className="business-description">{business.description}</p>
-              <p className="business-address">📍 {business.address}</p>
-              <div className="business-footer">
-                <div className="business-rating">
-                  <span className="stars">
-                    {'⭐'.repeat(Math.floor(business.rating))}
-                  </span>
-                  <span>{business.rating.toFixed(1)}</span>
-                </div>
-                {userLocation && (
-                  <span className="distance">
-                    {getDistance(
-                      userLocation[0], userLocation[1],
-                      business.latitude, business.longitude
-                    )}km
-                  </span>
-                )}
-              </div>
-            </motion.div>
-          ))}
+      {/* 商家列表 */}
+      <div className="business-list-section">
+        <div className="section-header">
+          <h3>附近商家 ({filteredBusinesses.length})</h3>
+          {searchQuery && (
+            <span className="search-results">
+              搜索: "{searchQuery}"
+            </span>
+          )}
         </div>
+        
+        {filteredBusinesses.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🏪</div>
+            <h3>暂无商家</h3>
+            <p>{searchQuery ? '没有找到匹配的商家，试试其他关键词' : '该区域暂无商家信息'}</p>
+          </div>
+        ) : (
+          <div className="business-cards">
+            {filteredBusinesses.map(business => (
+              <motion.div
+                key={business.id}
+                className="business-card"
+                whileHover={{ scale: 1.02 }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <div className="business-card-header">
+                  <span className="business-icon">{getCategoryIcon(business.category)}</span>
+                  <h4>{business.name}</h4>
+                  {business.is_verified && <span className="verified-badge">✓ 认证</span>}
+                </div>
+                <p className="business-description">{business.description}</p>
+                <p className="business-address">📍 {business.address}</p>
+                <div className="business-footer">
+                  <div className="business-rating">
+                    <span className="stars">
+                      {'⭐'.repeat(Math.floor(business.rating))}
+                    </span>
+                    <span>{business.rating.toFixed(1)}</span>
+                  </div>
+                  {userLocation && (
+                    <span className="distance">
+                      {getDistance(
+                        userLocation[0], userLocation[1],
+                        business.latitude, business.longitude
+                      )}km
+                    </span>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

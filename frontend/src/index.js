@@ -2,6 +2,18 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import { motion } from 'framer-motion';
+
+// 敏感词检查工具函数
+const checkSensitiveContent = async (content) => {
+  try {
+    const response = await axios.post('/api/content/check', { content });
+    return response.data;
+  } catch (error) {
+    console.error('敏感词检查失败:', error);
+    return { is_safe: true, filtered_content: content, found_words: [] };
+  }
+};
 
 import './index.css';
 
@@ -40,21 +52,21 @@ function Toast({ message, type = 'info', onClose }) {
     
     const baseStyle = {
       position: 'fixed',
-      bottom: isMobile ? '120px' : '40px', // 移动端距离底部更远，避免被底部导航遮挡
-      left: '50%',
-      transform: `translateX(-50%) ${isVisible ? 'translateY(0)' : 'translateY(100%)'}`,
-      padding: isMobile ? '14px 24px' : '12px 20px',
-      borderRadius: '12px',
+      top: isMobile ? '80px' : '60px', // 改为顶部位置，避免遮挡底部导航
+      right: '16px', // 改为右上角
+      transform: isVisible ? 'translateX(0)' : 'translateX(100%)',
+      padding: isMobile ? '8px 16px' : '6px 12px', // 减小内边距
+      borderRadius: '8px', // 减小圆角
       color: 'white',
-      fontSize: isMobile ? '1rem' : '0.9rem',
+      fontSize: isMobile ? '0.8rem' : '0.75rem', // 减小字体
       fontWeight: '500',
       zIndex: 9999,
-      boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-      backdropFilter: 'blur(12px)',
-      WebkitBackdropFilter: 'blur(12px)',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.15)', // 减小阴影
+      backdropFilter: 'blur(8px)',
+      WebkitBackdropFilter: 'blur(8px)',
       transition: 'transform 0.3s ease-out, opacity 0.3s ease-out',
-      maxWidth: isMobile ? '320px' : '280px',
-      minWidth: isMobile ? '240px' : '200px',
+      maxWidth: isMobile ? '200px' : '180px', // 减小最大宽度
+      minWidth: isMobile ? '120px' : '100px', // 减小最小宽度
       wordBreak: 'break-word',
       textAlign: 'center',
       opacity: isVisible ? 1 : 0
@@ -399,49 +411,7 @@ function Home({ auth }) {
             </Link>
           </div>
 
-          {/* Demo体验 */}
-          <div style={{ marginTop: '32px', textAlign: 'center' }}>
-            <div style={{ 
-              fontSize: '0.9rem', 
-              color: 'var(--text-muted)', 
-              marginBottom: '12px'
-            }}>
-              或者先体验功能
-            </div>
-            <button 
-              className="btn btn-outline"
-              onClick={async () => {
-                try {
-                  const response = await axios.post('/demo/bootstrap');
-                  showToast('✅ 演示数据已生成！', 'success');
-                  // 延迟跳转，让用户看到成功提示
-                  setTimeout(() => {
-                    window.location.href = 'http://localhost:3000/#/posts';
-                  }, 1000);
-                } catch (err) {
-                  showToast('🎯 直接进入Demo模式', 'info');
-                  // 延迟跳转
-                  setTimeout(() => {
-                    window.location.href = 'http://localhost:3000/#/posts';
-                  }, 1000);
-                }
-              }}
-              style={{
-                background: 'rgba(255,255,255,0.8)',
-                border: '2px solid rgba(156, 163, 175, 0.3)',
-                color: '#6b7280',
-                padding: '12px 24px',
-                fontSize: '0.95rem',
-                fontWeight: '600',
-                borderRadius: '12px',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.05)',
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)'
-              }}
-            >
-              🎯 游客体验
-            </button>
-          </div>
+
 
           {/* 特色介绍 - 简化版 */}
           <div style={{ 
@@ -1297,32 +1267,735 @@ function Posts({ auth }) {
 }
 
 function Groups() {
-  const [items, setItems] = React.useState([]);
-  const [name, setName] = React.useState('');
-  React.useEffect(() => { (async () => {
+  const [groups, setGroups] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [newGroup, setNewGroup] = React.useState({ name: '', description: '', category: '' });
+  const [filter, setFilter] = React.useState('all');
+
+  React.useEffect(() => {
+    loadGroups();
+  }, []);
+
+  const loadGroups = async () => {
+    try {
     const { data } = await axios.get('/groups');
-    setItems(data);
-  })(); }, []);
-  const create = async () => {
-    await axios.post('/groups', { name });
-    setName('');
-    const { data } = await axios.get('/groups');
-    setItems(data);
+      setGroups(data);
+    } catch (error) {
+      console.error('加载群组失败:', error);
+    } finally {
+      setLoading(false);
+    }
   };
-  const join = async (id) => { await axios.post(`/groups/${id}/join`); };
+
+  const create = async () => {
+    if (!newGroup.name.trim()) return;
+    
+    // 敏感词检查
+    const checkResult = await checkSensitiveContent(newGroup.name + ' ' + newGroup.description);
+    if (!checkResult.is_safe) {
+      showToast(`内容包含敏感词: ${checkResult.found_words.join(', ')}`, 'error');
+      return;
+    }
+    
+    try {
+      await axios.post('/groups', newGroup);
+      setNewGroup({ name: '', description: '', category: '' });
+      setShowCreate(false);
+      loadGroups();
+      showToast('群组创建成功！', 'success');
+    } catch (error) {
+      console.error('创建群组失败:', error);
+      showToast('创建群组失败', 'error');
+    }
+  };
+
+  const join = async (id) => { 
+    try {
+      await axios.post(`/groups/${id}/join`);
+      showToast('成功加入群组！', 'success');
+      loadGroups();
+    } catch (error) {
+      showToast('加入群组失败', 'error');
+    }
+  };
+
+  const filteredGroups = groups.filter(group => {
+    if (filter === 'all') return true;
+    return group.category === filter;
+  });
+
+  if (loading) return (
+    <div className="loading-container">
+      <div className="loading-spinner"></div>
+      <p>加载群组中...</p>
+    </div>
+  );
+
   return (
-    <div>
-      <h3>兴趣小组</h3>
-      <input placeholder="新小组名" value={name} onChange={e => setName(e.target.value)} />
-      <button onClick={create}>创建</button>
-      <ul>
-        {items.map(g => (
-          <li key={g.id}>{g.name} <button onClick={() => join(g.id)}>加入</button></li>
-        ))}
-      </ul>
+    <div className="fade-in">
+      {/* 页面头部 */}
+      <div className="page-header">
+        <div className="header-content">
+          <h1>👥 邻里群组</h1>
+          <p>发现志同道合的邻居，加入感兴趣的群组</p>
+        </div>
+        <button 
+          className="btn btn-primary btn-large"
+          onClick={() => setShowCreate(true)}
+          style={{ 
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            border: 'none',
+            boxShadow: '0 8px 25px rgba(102, 126, 234, 0.3)'
+          }}
+        >
+          ✨ 创建群组
+        </button>
+      </div>
+
+      {/* 分类筛选 */}
+      <div className="filter-tabs">
+        <button 
+          className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
+          onClick={() => setFilter('all')}
+        >
+          <span className="tab-icon">📋</span>
+          <span className="tab-text">全部</span>
+        </button>
+        <button 
+          className={`filter-tab ${filter === '兴趣' ? 'active' : ''}`}
+          onClick={() => setFilter('兴趣')}
+        >
+          <span className="tab-icon">🎯</span>
+          <span className="tab-text">兴趣</span>
+        </button>
+        <button 
+          className={`filter-tab ${filter === '活动' ? 'active' : ''}`}
+          onClick={() => setFilter('活动')}
+        >
+          <span className="tab-icon">🎉</span>
+          <span className="tab-text">活动</span>
+        </button>
+        <button 
+          className={`filter-tab ${filter === '互助' ? 'active' : ''}`}
+          onClick={() => setFilter('互助')}
+        >
+          <span className="tab-icon">🤝</span>
+          <span className="tab-text">互助</span>
+        </button>
+        <button 
+          className={`filter-tab ${filter === '其他' ? 'active' : ''}`}
+          onClick={() => setFilter('其他')}
+        >
+          <span className="tab-icon">📌</span>
+          <span className="tab-text">其他</span>
+        </button>
+      </div>
+        
+      {/* 创建群组弹窗 */}
+      {showCreate && (
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>创建新群组</h3>
+              <button className="modal-close" onClick={() => setShowCreate(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>群组名称</label>
+                <input
+                  type="text"
+                  placeholder="输入群组名称"
+                  value={newGroup.name}
+                  onChange={(e) => setNewGroup({...newGroup, name: e.target.value})}
+                  className="form-input"
+                />
+              </div>
+              <div className="form-group">
+                <label>群组描述</label>
+                <textarea
+                  placeholder="描述群组的目的和特色"
+                  value={newGroup.description}
+                  onChange={(e) => setNewGroup({...newGroup, description: e.target.value})}
+                  className="form-textarea"
+                  rows="4"
+                />
+              </div>
+              <div className="form-group">
+                <label>分类</label>
+                <select
+                  value={newGroup.category}
+                  onChange={(e) => setNewGroup({...newGroup, category: e.target.value})}
+                  className="form-select"
+                >
+                  <option value="">选择分类</option>
+                  <option value="兴趣">🎯 兴趣</option>
+                  <option value="活动">🎉 活动</option>
+                  <option value="互助">🤝 互助</option>
+                  <option value="其他">📌 其他</option>
+                </select>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={() => setShowCreate(false)}>取消</button>
+              <button className="btn btn-primary" onClick={create}>创建群组</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 群组列表 */}
+      <div className="groups-grid">
+        {filteredGroups.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">👥</div>
+            <h3>暂无群组</h3>
+            <p>成为第一个创建群组的人吧！</p>
+          </div>
+        ) : (
+          filteredGroups.map(group => (
+            <div key={group.id} className="group-card">
+              <div className="group-header">
+                <div className="group-avatar">
+                  {group.name.charAt(0)}
+                </div>
+                <div className="group-info">
+                  <h3>{group.name}</h3>
+                  <span className="group-category">{group.category}</span>
+                </div>
+                <div className="group-stats">
+                  <span className="stat-item">
+                    <span className="stat-icon">👥</span>
+                    {group.member_count || 0}
+                  </span>
+                </div>
+              </div>
+              <div className="group-body">
+                <p className="group-description">{group.description || '暂无描述'}</p>
+                <div className="group-meta">
+                  <span className="meta-item">
+                    <span className="meta-icon">📅</span>
+                    {new Date(group.created_at).toLocaleDateString()}
+                  </span>
+                  <span className="meta-item">
+                    <span className="meta-icon">👤</span>
+                    {group.creator?.username || '未知'}
+                  </span>
+                </div>
+              </div>
+              <div className="group-footer">
+                <button 
+                  className="btn btn-primary btn-full"
+                  onClick={() => join(group.id)}
+                  style={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    border: 'none'
+                  }}
+                >
+                  加入群组
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
+
+// 任务挑战页面
+function Quests() {
+  const [quests, setQuests] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [filter, setFilter] = React.useState('all');
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [newQuest, setNewQuest] = React.useState({ 
+    title: '', 
+    description: '', 
+    difficulty: 'easy',
+    reward_points: 10,
+    deadline: '',
+    category: 'general',
+    tags: []
+  });
+
+  React.useEffect(() => {
+    loadQuests();
+  }, []);
+
+  const loadQuests = async () => {
+    try {
+      const { data } = await axios.get('/api/quests');
+      setQuests(data);
+    } catch (error) {
+      console.error('加载任务挑战失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const create = async () => {
+    if (!newQuest.title.trim()) return;
+    
+    try {
+      await axios.post('/api/quests', newQuest);
+      setNewQuest({ 
+        title: '', 
+        description: '', 
+        difficulty: 'easy', 
+        reward_points: 10, 
+        deadline: '',
+        category: 'general',
+        tags: []
+      });
+      setShowCreate(false);
+      loadQuests();
+      showToast('任务挑战创建成功！', 'success');
+    } catch (error) {
+      console.error('创建任务挑战失败:', error);
+      showToast('创建任务挑战失败', 'error');
+    }
+  };
+
+  const accept = async (id) => {
+    try {
+      await axios.post(`/api/quests/${id}/accept`);
+      showToast('成功接受任务挑战！', 'success');
+      loadQuests();
+    } catch (error) {
+      showToast('接受任务挑战失败', 'error');
+    }
+  };
+
+  const complete = async (id) => {
+    try {
+      await axios.post(`/api/quests/${id}/complete`);
+      showToast('🎉 任务挑战完成！积分已到账', 'success');
+      loadQuests();
+    } catch (error) {
+      showToast('完成任务挑战失败', 'error');
+    }
+  };
+
+  const getDifficultyInfo = (difficulty) => {
+    const info = {
+      easy: { 
+        label: '简单', 
+        color: '#10b981', 
+        bgColor: 'rgba(16, 185, 129, 0.1)', 
+        icon: '🟢',
+        gradient: 'linear-gradient(135deg, #10b981, #059669)'
+      },
+      medium: { 
+        label: '中等', 
+        color: '#f59e0b', 
+        bgColor: 'rgba(245, 158, 11, 0.1)', 
+        icon: '🟡',
+        gradient: 'linear-gradient(135deg, #f59e0b, #d97706)'
+      },
+      hard: { 
+        label: '困难', 
+        color: '#ef4444', 
+        bgColor: 'rgba(239, 68, 68, 0.1)', 
+        icon: '🔴',
+        gradient: 'linear-gradient(135deg, #ef4444, #dc2626)'
+      }
+    };
+    return info[difficulty] || info.easy;
+  };
+
+  const getCategoryInfo = (category) => {
+    const categories = {
+      general: { label: '通用', icon: '🎯', color: '#3b82f6' },
+      social: { label: '社交', icon: '👥', color: '#8b5cf6' },
+      creative: { label: '创意', icon: '🎨', color: '#ec4899' },
+      fitness: { label: '健身', icon: '💪', color: '#f59e0b' },
+      learning: { label: '学习', icon: '📚', color: '#10b981' },
+      community: { label: '社区', icon: '🏘️', color: '#06b6d4' }
+    };
+    return categories[category] || categories.general;
+  };
+
+  const filteredQuests = quests.filter(quest => {
+    const matchesFilter = filter === 'all' || quest.status === filter;
+    const matchesSearch = quest.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         quest.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+
+  const getStats = () => {
+    const total = quests.length;
+    const available = quests.filter(q => q.status === 'available').length;
+    const inProgress = quests.filter(q => q.status === 'in_progress').length;
+    const completed = quests.filter(q => q.status === 'completed').length;
+    return { total, available, inProgress, completed };
+  };
+
+  const stats = getStats();
+
+  if (loading) return (
+    <div className="fade-in">
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>加载任务挑战中...</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      {/* 页面头部 */}
+      <div className="page-header quests-header">
+        <div className="header-content">
+          <h1>🎯 任务挑战</h1>
+          <p>接受挑战，完成任务，获得丰厚奖励</p>
+        </div>
+        <button 
+          className="btn btn-primary btn-large quest-create-btn"
+          onClick={() => setShowCreate(true)}
+        >
+          <span className="btn-icon">⚡</span>
+          发布挑战
+        </button>
+      </div>
+
+      {/* 统计卡片 */}
+      <div className="quests-stats">
+        <div className="stat-item">
+          <div className="stat-number">{stats.total}</div>
+          <div className="stat-label">总挑战</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-number">{stats.available}</div>
+          <div className="stat-label">可接受</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-number">{stats.inProgress}</div>
+          <div className="stat-label">进行中</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-number">{stats.completed}</div>
+          <div className="stat-label">已完成</div>
+        </div>
+      </div>
+
+      {/* 搜索和筛选 */}
+      <div className="quests-filter">
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="搜索挑战标题或描述..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+          <span className="search-icon">🔍</span>
+        </div>
+        
+        <div className="filter-tabs">
+          <button 
+            className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
+            onClick={() => setFilter('all')}
+          >
+            <span className="tab-icon">📋</span>
+            <span className="tab-text">全部</span>
+          </button>
+          <button 
+            className={`filter-tab ${filter === 'available' ? 'active' : ''}`}
+            onClick={() => setFilter('available')}
+          >
+            <span className="tab-icon">🎯</span>
+            <span className="tab-text">可接受</span>
+          </button>
+          <button 
+            className={`filter-tab ${filter === 'in_progress' ? 'active' : ''}`}
+            onClick={() => setFilter('in_progress')}
+          >
+            <span className="tab-icon">⏳</span>
+            <span className="tab-text">进行中</span>
+          </button>
+          <button 
+            className={`filter-tab ${filter === 'completed' ? 'active' : ''}`}
+            onClick={() => setFilter('completed')}
+          >
+            <span className="tab-icon">✅</span>
+            <span className="tab-text">已完成</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 挑战列表 */}
+      <div className="quests-grid">
+        {filteredQuests.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🎯</div>
+            <h3>暂无任务挑战</h3>
+            <p>{searchQuery ? '没有找到匹配的挑战' : '成为第一个发布挑战的人吧！'}</p>
+          </div>
+        ) : (
+          filteredQuests.map(quest => {
+            const difficultyInfo = getDifficultyInfo(quest.difficulty);
+            const categoryInfo = getCategoryInfo(quest.category);
+            return (
+              <motion.div 
+                key={quest.id} 
+                className="quest-card"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="quest-header">
+                  <div className="quest-category">
+                    <span className="category-icon" style={{ color: categoryInfo.color }}>
+                      {categoryInfo.icon}
+                    </span>
+                    <span className="category-label">{categoryInfo.label}</span>
+                  </div>
+                  <div className="quest-difficulty">
+                    <span className="difficulty-icon">{difficultyInfo.icon}</span>
+                    <span className="difficulty-label" style={{ color: difficultyInfo.color }}>
+                      {difficultyInfo.label}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="quest-body">
+                  <h3 className="quest-title">{quest.title}</h3>
+                  <p className="quest-description">{quest.description || '暂无描述'}</p>
+                  
+                  <div className="quest-meta">
+                    <div className="meta-row">
+                      <div className="meta-item">
+                        <span className="meta-icon">⏰</span>
+                        <span className="meta-text">
+                          {quest.deadline ? new Date(quest.deadline).toLocaleDateString() : '无截止时间'}
+                        </span>
+                      </div>
+                      <div className="meta-item">
+                        <span className="meta-icon">👤</span>
+                        <span className="meta-text">{quest.creator?.username || '未知'}</span>
+                      </div>
+                    </div>
+                    <div className="meta-row">
+                      <div className="meta-item">
+                        <span className="meta-icon">📅</span>
+                        <span className="meta-text">
+                          {new Date(quest.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="meta-item">
+                        <span className="meta-icon">👥</span>
+                        <span className="meta-text">{quest.participants_count || 0} 人参与</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="quest-footer">
+                  <div className="quest-reward">
+                    <span className="reward-icon">⭐</span>
+                    <span className="reward-points">{quest.reward_points}</span>
+                    <span className="reward-label">积分</span>
+                  </div>
+                  
+                  <div className="quest-actions">
+                    {quest.status === 'available' ? (
+                      <button 
+                        className="quest-action-btn accept-btn"
+                        onClick={() => accept(quest.id)}
+                        style={{ background: difficultyInfo.gradient }}
+                      >
+                        <span className="btn-icon">🎯</span>
+                        接受挑战
+                      </button>
+                    ) : quest.status === 'in_progress' ? (
+                      <button 
+                        className="quest-action-btn complete-btn"
+                        onClick={() => complete(quest.id)}
+                      >
+                        <span className="btn-icon">✅</span>
+                        完成任务
+                      </button>
+                    ) : (
+                      <button className="quest-action-btn completed-btn" disabled>
+                        <span className="btn-icon">🏆</span>
+                        已完成
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 创建挑战弹窗 */}
+      {showCreate && (
+        <div className="modal-overlay quest-modal" onClick={() => setShowCreate(false)}>
+          <div className="modal-content quest-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header quest-modal-header">
+              <div className="header-left">
+                <h3>🎯 发布新挑战</h3>
+                <p>创建一个有趣的任务挑战，激励社区成员参与</p>
+              </div>
+            </div>
+            
+            <div className="modal-body quest-modal-body">
+              <div className="form-section">
+                <div className="section-title">
+                  <span className="section-icon">📝</span>
+                  <span>基本信息</span>
+                </div>
+                
+                <div className="form-group">
+                  <label>挑战标题 *</label>
+                  <input
+                    type="text"
+                    placeholder="输入一个吸引人的挑战标题"
+                    value={newQuest.title}
+                    onChange={(e) => setNewQuest({...newQuest, title: e.target.value})}
+                    className="form-input"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>挑战描述</label>
+                  <textarea
+                    placeholder="详细描述挑战内容、要求和完成标准..."
+                    value={newQuest.description}
+                    onChange={(e) => setNewQuest({...newQuest, description: e.target.value})}
+                    className="form-textarea"
+                    rows="4"
+                  />
+                </div>
+              </div>
+
+              <div className="form-section">
+                <div className="section-title">
+                  <span className="section-icon">⚙️</span>
+                  <span>挑战设置</span>
+                </div>
+                
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>挑战分类</label>
+                    <select
+                      value={newQuest.category}
+                      onChange={(e) => setNewQuest({...newQuest, category: e.target.value})}
+                      className="form-select"
+                    >
+                      <option value="general">🎯 通用</option>
+                      <option value="social">👥 社交</option>
+                      <option value="creative">🎨 创意</option>
+                      <option value="fitness">💪 健身</option>
+                      <option value="learning">📚 学习</option>
+                      <option value="community">🏘️ 社区</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>难度等级</label>
+                    <select
+                      value={newQuest.difficulty}
+                      onChange={(e) => setNewQuest({...newQuest, difficulty: e.target.value})}
+                      className="form-select"
+                    >
+                      <option value="easy">🟢 简单 (5-15积分)</option>
+                      <option value="medium">🟡 中等 (15-30积分)</option>
+                      <option value="hard">🔴 困难 (30-50积分)</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>奖励积分</label>
+                    <div className="input-with-icon">
+                      <span className="input-icon">⭐</span>
+                      <input
+                        type="number"
+                        min="5"
+                        max="100"
+                        value={newQuest.reward_points}
+                        onChange={(e) => setNewQuest({...newQuest, reward_points: parseInt(e.target.value)})}
+                        className="form-input"
+                        placeholder="10"
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>截止时间</label>
+                    <div className="input-with-icon">
+                      <span className="input-icon">⏰</span>
+                      <input
+                        type="datetime-local"
+                        value={newQuest.deadline}
+                        onChange={(e) => setNewQuest({...newQuest, deadline: e.target.value})}
+                        className="form-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="tips-section">
+                <div className="section-title">
+                  <span className="section-icon">💡</span>
+                  <span>发布小贴士</span>
+                </div>
+                <div className="tips-grid">
+                  <div className="tip-card">
+                    <div className="tip-icon">🎯</div>
+                    <div className="tip-content">
+                      <h4>标题要简洁明了</h4>
+                      <p>突出挑战的核心内容，让用户一眼就能理解</p>
+                    </div>
+                  </div>
+                  <div className="tip-card">
+                    <div className="tip-icon">📝</div>
+                    <div className="tip-content">
+                      <h4>详细描述要求</h4>
+                      <p>让参与者清楚知道要做什么，如何完成</p>
+                    </div>
+                  </div>
+                  <div className="tip-card">
+                    <div className="tip-icon">⭐</div>
+                    <div className="tip-content">
+                      <h4>合理设置奖励</h4>
+                      <p>根据难度合理设置积分，激励更多人参与</p>
+                    </div>
+                  </div>
+                  <div className="tip-card">
+                    <div className="tip-icon">⏰</div>
+                    <div className="tip-content">
+                      <h4>设置合理期限</h4>
+                      <p>给参与者足够的时间，但也要有紧迫感</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer quest-modal-footer">
+              <button className="btn btn-outline" onClick={() => setShowCreate(false)}>取消</button>
+              <button 
+                className="quest-submit-btn"
+                onClick={create}
+                disabled={!newQuest.title.trim()}
+              >
+                <span className="btn-icon">⚡</span>
+                发布挑战
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 
 function Activities({ auth }) {
   const [items, setItems] = React.useState([]);
@@ -2365,11 +3038,11 @@ function ProtectedRoute({ children, requiredPermission, requiredRole, fallback =
 function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
           <AppContent />
-        </BrowserRouter>
-      </ToastProvider>
+      </BrowserRouter>
+    </ToastProvider>
     </AuthProvider>
   );
 }
