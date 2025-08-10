@@ -18,45 +18,28 @@
 - **响应式布局**：完美适配桌面端和移动端
 - **高对比度**：确保所有用户都能清晰阅读
 
-## 🚀 快速开始
+## 🚀 启动指南
 
-### 一键启动（推荐）
-
-**Windows用户：**
-```bash
-# 双击运行或在命令行执行
-start_app.bat
-```
-
-**Linux/Mac用户：**
-```bash
-# 给脚本执行权限并运行
-chmod +x start_app.sh
-./start_app.sh
-```
-
-### 手动启动
-
-**环境要求：**
+### 环境要求
 - Python 3.7+
 - Node.js 16+
 - npm 6+
 
-**启动步骤：**
+### 手动启动步骤
 
-1. **克隆项目**
+#### 1. 克隆项目
 ```bash
 git clone https://github.com/happysheep321/NearUs.git
 cd NearUs
 ```
 
-2. **启动后端**
+#### 2. 启动后端服务
 ```bash
 # 创建虚拟环境
 python -m venv venv
 
 # 激活虚拟环境 (Windows)
-venv\Scripts\activate
+venv\Scripts\activate.bat
 # 激活虚拟环境 (Linux/Mac)
 source venv/bin/activate
 
@@ -64,12 +47,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # 启动后端服务
-python simple_app.py
+python app.py
 ```
 
-3. **启动前端**
+#### 3. 启动前端服务
 ```bash
-# 新开终端窗口
+# 新开一个终端窗口
 cd frontend
 
 # 安装依赖
@@ -79,9 +62,13 @@ npm install
 npm start
 ```
 
-4. **访问应用**
+#### 4. 访问应用
 - 前端地址：http://localhost:3000
 - 后端地址：http://localhost:5000
+
+### 停止服务
+- 在各自的服务窗口中按 `Ctrl+C` 停止
+- 或使用 `stop_app.bat` 停止所有相关进程
 
 ## 👥 测试账号
 
@@ -103,11 +90,9 @@ NearUs/
 │   │   └── index.css       # 全局样式
 │   ├── package.json        # 前端依赖
 │   └── webpack.config.js   # Webpack配置
-├── simple_app.py           # Flask后端主文件
+├── app.py                  # Flask后端主文件
 ├── requirements.txt        # Python依赖
-├── start_app.bat          # Windows一键启动脚本
-├── start_app.sh           # Linux/Mac一键启动脚本
-├── stop_app.bat           # Windows停止服务脚本
+├── stop_app.bat           # 停止服务脚本
 └── README.md              # 项目说明
 ```
 
