@@ -5,48 +5,117 @@ import axios from 'axios';
 
 import './index.css';
 
-function useAuth() {
-  const [user, setUser] = React.useState(() => {
-    const raw = localStorage.getItem('auth');
-    return raw ? JSON.parse(raw) : null;
-  });
-  const login = async (username, password) => {
-    const { data } = await axios.post('/auth/login', { username, password });
-    localStorage.setItem('auth', JSON.stringify(data));
-    setUser(data.user);
+// 导入上下文提供者
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider, useToast } from './contexts/ToastContext';
+
+// 导入新功能组件
+import Notifications from './components/Notifications';
+import BusinessMap from './components/BusinessMap';
+import Coupons from './components/Coupons';
+import Polls from './components/Polls';
+
+import Quest from './components/Quest';
+import RealTimeNotifications from './components/RealTimeNotifications';
+import ImageWall from './components/ImageWall';
+
+// 简洁的页面内弹窗组件
+function Toast({ message, type = 'info', onClose }) {
+  const [isVisible, setIsVisible] = React.useState(true);
+  
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsVisible(false);
+      // 等待动画完成后调用onClose
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+    const getToastStyle = () => {
+    // 检测是否为移动设备
+    const isMobile = window.innerWidth <= 768;
+    
+    const baseStyle = {
+      position: 'fixed',
+      bottom: isMobile ? '120px' : '40px', // 移动端距离底部更远，避免被底部导航遮挡
+      left: '50%',
+      transform: `translateX(-50%) ${isVisible ? 'translateY(0)' : 'translateY(100%)'}`,
+      padding: isMobile ? '14px 24px' : '12px 20px',
+      borderRadius: '12px',
+      color: 'white',
+      fontSize: isMobile ? '1rem' : '0.9rem',
+      fontWeight: '500',
+      zIndex: 9999,
+      boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      transition: 'transform 0.3s ease-out, opacity 0.3s ease-out',
+      maxWidth: isMobile ? '320px' : '280px',
+      minWidth: isMobile ? '240px' : '200px',
+      wordBreak: 'break-word',
+      textAlign: 'center',
+      opacity: isVisible ? 1 : 0
+    };
+
+    switch (type) {
+      case 'success':
+        return { ...baseStyle, background: 'linear-gradient(135deg, #10b981, #059669)' };
+      case 'error':
+        return { ...baseStyle, background: 'linear-gradient(135deg, #ef4444, #dc2626)' };
+      case 'warning':
+        return { ...baseStyle, background: 'linear-gradient(135deg, #f59e0b, #d97706)' };
+      default:
+        return { ...baseStyle, background: 'linear-gradient(135deg, #3b82f6, #2563eb)' };
+    }
   };
-  const register = async (payload) => {
-    const { data } = await axios.post('/auth/register', payload);
-    localStorage.setItem('auth', JSON.stringify(data));
-    setUser(data.user);
-  };
-  const logout = () => {
-    localStorage.removeItem('auth');
-    setUser(null);
-  };
-  const token = () => {
-    const raw = localStorage.getItem('auth');
-    if (!raw) return null;
-    try { return JSON.parse(raw).access_token; } catch { return null; }
-  };
-  axios.interceptors.request.use((config) => {
-    const t = token();
-    if (t) config.headers.Authorization = `Bearer ${t}`;
-    return config;
-  });
-  return { user, login, register, logout };
+
+  return (
+    <div style={getToastStyle()}>
+      {message}
+    </div>
+  );
 }
+
+
 
 function Layout({ auth }) {
   const location = useLocation();
   
-  const navItems = [
-    { path: '/', icon: '🏠', label: '首页' },
-    { path: '/posts', icon: '💬', label: '动态' },
-    { path: '/tasks', icon: '✅', label: '任务' },
-    { path: '/activities', icon: '🎉', label: '活动' },
-    { path: '/leaderboard', icon: '🏆', label: '排行' }
-  ];
+  // 根据用户角色生成导航菜单
+  const getNavItems = () => {
+    const baseItems = [
+      { path: '/', icon: '🏠', label: '首页' },
+      { path: '/posts', icon: '💬', label: '动态' },
+      { path: '/tasks', icon: '✅', label: '任务' },
+      { path: '/activities', icon: '🎉', label: '活动' },
+      { path: '/chat', icon: '💬', label: '聊天' },
+      { path: '/friends', icon: '👤', label: '好友' },
+      { path: '/leaderboard', icon: '🏆', label: '排行' },
+      { path: '/notifications', icon: '📢', label: '通知' }
+    ];
+    
+    // 管理员和版主可以访问公告管理
+    if (auth.user && (hasRole(auth.user, ROLES.ADMIN) || hasRole(auth.user, ROLES.MODERATOR))) {
+      baseItems.push({ path: '/announcements', icon: '📢', label: '公告' });
+    }
+    
+    // 商家可以访问商店
+    if (auth.user && hasRole(auth.user, ROLES.MERCHANT)) {
+      baseItems.push({ path: '/store', icon: '🏪', label: '商店' });
+    }
+    
+    // 管理员可以访问系统管理
+    if (auth.user && hasRole(auth.user, ROLES.ADMIN)) {
+      baseItems.push({ path: '/admin', icon: '⚙️', label: '管理' });
+    }
+    
+    return baseItems;
+  };
+  
+  const navItems = getNavItems();
 
   return (
     <div className="container">
@@ -56,8 +125,21 @@ function Layout({ auth }) {
           <div className="header-user">
             {auth.user ? (
               <>
-                <span style={{ fontWeight: '600' }}>{auth.user.username}</span>
-                <div className="points-indicator">{auth.user.credit_points || 0}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: '600' }}>{auth.user.username}</span>
+                  <div className="points-indicator">{auth.user.credit_points || 0}</div>
+                  {/* 角色标签 */}
+                  <div style={{
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    color: 'white',
+                    background: getRoleColor(auth.user.user_type)
+                  }}>
+                    {getRoleLabel(auth.user.user_type)}
+                  </div>
+                </div>
                 <button 
                   className="btn btn-small btn-secondary"
                   onClick={auth.logout}
@@ -129,12 +211,48 @@ function Layout({ auth }) {
           <Route path="/" element={<Home auth={auth} />} />
           <Route path="/login" element={<Login auth={auth} />} />
           <Route path="/register" element={<Register auth={auth} />} />
-          <Route path="/posts" element={<Posts auth={auth} />} />
-          <Route path="/groups" element={<Groups auth={auth} />} />
-          <Route path="/activities" element={<Activities auth={auth} />} />
-          <Route path="/tasks" element={<Tasks auth={auth} />} />
-          <Route path="/announcements" element={<Announcements />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
+          
+          {/* 基础功能 - 所有登录用户可访问 */}
+          <Route path="/posts" element={<ProtectedRoute><Posts auth={auth} /></ProtectedRoute>} />
+          <Route path="/groups" element={<ProtectedRoute><Groups auth={auth} /></ProtectedRoute>} />
+          <Route path="/activities" element={<ProtectedRoute><Activities auth={auth} /></ProtectedRoute>} />
+          <Route path="/tasks" element={<ProtectedRoute><Tasks auth={auth} /></ProtectedRoute>} />
+          <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+          <Route path="/friends" element={<ProtectedRoute><Friends /></ProtectedRoute>} />
+          
+          {/* 新功能路由 */}
+          <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+          <Route path="/business-map" element={<ProtectedRoute><BusinessMap /></ProtectedRoute>} />
+          <Route path="/coupons" element={<ProtectedRoute><Coupons /></ProtectedRoute>} />
+          <Route path="/polls" element={<ProtectedRoute><Polls /></ProtectedRoute>} />
+          
+          {/* 游戏化功能路由 */}
+          <Route path="/quests" element={<ProtectedRoute><Quest /></ProtectedRoute>} />
+          <Route path="/image-wall" element={<ProtectedRoute><ImageWall /></ProtectedRoute>} />
+          <Route path="/real-time-notifications" element={<ProtectedRoute><RealTimeNotifications /></ProtectedRoute>} />
+          
+          {/* 管理功能 - 需要特定权限 */}
+          <Route path="/announcements" element={
+            <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_ANNOUNCEMENTS}>
+              <Announcements />
+            </ProtectedRoute>
+          } />
+          
+          {/* 商家功能 - 仅商家可访问 */}
+          <Route path="/store" element={
+            <ProtectedRoute requiredRole={ROLES.MERCHANT}>
+              <Store />
+            </ProtectedRoute>
+          } />
+          
+          {/* 系统管理 - 仅管理员可访问 */}
+          <Route path="/admin" element={
+            <ProtectedRoute requiredRole={ROLES.ADMIN}>
+              <AdminPanel />
+            </ProtectedRoute>
+          } />
+          
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
@@ -158,6 +276,7 @@ function Layout({ auth }) {
 
 function Home({ auth }) {
   const [stats, setStats] = React.useState({});
+  const { showToast } = useToast();
   
   React.useEffect(() => {
     (async () => {
@@ -293,14 +412,18 @@ function Home({ auth }) {
               className="btn btn-outline"
               onClick={async () => {
                 try {
-                  await axios.post('/demo/bootstrap');
-                  alert('✅ 演示数据已生成！现在为您展示邻里动态页面');
-                  // 跳转到动态页面
-                  window.location.href = 'http://localhost:3000/#/posts';
+                  const response = await axios.post('/demo/bootstrap');
+                  showToast('✅ 演示数据已生成！', 'success');
+                  // 延迟跳转，让用户看到成功提示
+                  setTimeout(() => {
+                    window.location.href = 'http://localhost:3000/#/posts';
+                  }, 1000);
                 } catch (err) {
-                  alert('🎯 Demo模式：直接为您展示应用功能');
-                  // 即使失败也跳转到动态页面
-                  window.location.href = 'http://localhost:3000/#/posts';
+                  showToast('🎯 直接进入Demo模式', 'info');
+                  // 延迟跳转
+                  setTimeout(() => {
+                    window.location.href = 'http://localhost:3000/#/posts';
+                  }, 1000);
                 }
               }}
               style={{
@@ -406,6 +529,53 @@ function Home({ auth }) {
               </div>
             </div>
           </div>
+
+          {/* 更多功能 */}
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title">🔧 更多功能</h3>
+            </div>
+            <div className="card-content">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                <Link to="/groups" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                  👥 群组
+                </Link>
+                <Link to="/quests" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                  🎯 任务挑战
+                </Link>
+                <Link to="/image-wall" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                  📷 图片墙
+                </Link>
+                <Link to="/real-time-notifications" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                  🔔 实时通知
+                </Link>
+                <Link to="/business-map" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                  🗺️ 商家地图
+                </Link>
+                <Link to="/coupons" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                  🎫 优惠券
+                </Link>
+                <Link to="/polls" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                  🗳️ 投票
+                </Link>
+                {auth.user && (hasRole(auth.user, ROLES.ADMIN) || hasRole(auth.user, ROLES.MODERATOR)) && (
+                  <Link to="/announcements" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                    📢 公告管理
+                  </Link>
+                )}
+                {auth.user && hasRole(auth.user, ROLES.MERCHANT) && (
+                  <Link to="/store" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                    🏪 商店
+                  </Link>
+                )}
+                {auth.user && hasRole(auth.user, ROLES.ADMIN) && (
+                  <Link to="/admin" className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '12px 8px' }}>
+                    ⚙️ 系统管理
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>
@@ -416,22 +586,24 @@ function Login({ auth }) {
   const [username, setU] = React.useState('');
   const [password, setP] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const { showToast } = useToast();
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
-      alert('请填写完整的登录信息');
+      showToast('请填写完整的登录信息', 'warning');
       return;
     }
     setLoading(true);
     try {
       await auth.login(username, password);
-      
+      showToast('✅ 登录成功！', 'success');
       // 登录成功后跳转到首页
-      alert('🎉 登录成功！欢迎回来！');
-      window.location.href = 'http://localhost:3000/';
+      setTimeout(() => {
+        window.location.href = 'http://localhost:3000/';
+      }, 1000);
       
     } catch (err) {
-      alert('登录失败，请检查用户名和密码');
+      showToast('❌ 登录失败，请检查用户名和密码', 'error');
     }
     setLoading(false);
   };
@@ -495,27 +667,39 @@ function Login({ auth }) {
           <div style={{ 
             display: 'grid', 
             gridTemplateColumns: '1fr 1fr', 
-            gap: '12px', 
+            gap: '8px', 
             marginBottom: '16px',
-            fontSize: '0.85rem'
+            fontSize: '0.8rem'
           }}>
-            <div style={{ textAlign: 'center', padding: '8px', background: 'white', borderRadius: '8px' }}>
+            <div style={{ textAlign: 'center', padding: '8px', background: 'white', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
               <div>👑 管理员</div>
-              <div style={{ fontWeight: '600' }}>admin / admin123</div>
+              <div style={{ fontWeight: '600', fontSize: '0.75rem' }}>admin / admin123</div>
             </div>
-            <div style={{ textAlign: 'center', padding: '8px', background: 'white', borderRadius: '8px' }}>
+            <div style={{ textAlign: 'center', padding: '8px', background: 'white', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+              <div>🛡️ 版主</div>
+              <div style={{ fontWeight: '600', fontSize: '0.75rem' }}>moderator / mod123</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '8px', background: 'white', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+              <div>🏪 商家</div>
+              <div style={{ fontWeight: '600', fontSize: '0.75rem' }}>merchant / mer123</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '8px', background: 'white', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+              <div>⭐ VIP用户</div>
+              <div style={{ fontWeight: '600', fontSize: '0.75rem' }}>vipuser / vip123</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '8px', background: 'white', borderRadius: '8px', border: '1px solid #e5e7eb', gridColumn: '1 / -1' }}>
               <div>👤 普通用户</div>
-              <div style={{ fontWeight: '600' }}>zhangsan / user123</div>
+              <div style={{ fontWeight: '600', fontSize: '0.75rem' }}>zhangsan / user123</div>
             </div>
           </div>
           <button 
             className="btn btn-success"
             onClick={async () => {
               try {
-                await axios.post('/demo/bootstrap');
-                alert('✅ 演示数据已生成！\n\n账号信息：\n👑 管理员: admin / admin123\n👤 用户: zhangsan / user123');
+                const response = await axios.post('/demo/bootstrap');
+                showToast('✅ 演示数据生成成功！', 'success');
               } catch (err) {
-                alert('生成演示数据失败');
+                showToast('❌ 演示数据生成失败', 'error');
               }
             }}
             style={{ width: '100%' }}
@@ -537,6 +721,7 @@ function Register({ auth }) {
     interest_tags: []
   });
   const [loading, setLoading] = React.useState(false);
+  const { showToast } = useToast();
 
   const interestOptions = [
     '🏃‍♂️ 运动健身', '📚 读书学习', '🍳 美食烹饪', '🎵 音乐艺术', 
@@ -546,11 +731,11 @@ function Register({ auth }) {
 
   const handleRegister = async () => {
     if (!form.username.trim() || !form.password.trim() || !form.phone.trim()) {
-      alert('请填写完整的必要信息');
+      showToast('请填写完整的必要信息', 'warning');
       return;
     }
     if (form.password.length < 6) {
-      alert('密码长度至少6位');
+      showToast('密码长度至少6位', 'warning');
       return;
     }
     setLoading(true);
@@ -558,14 +743,14 @@ function Register({ auth }) {
       // 先尝试注册，但不自动登录
       await axios.post('/auth/register', form);
       
-      // 注册成功提示并跳转到登录页面
-      alert(`🎉 注册成功！\n\n欢迎加入邻里APP，${form.username}！\n请使用刚注册的账号登录。`);
-      
-      // 跳转到登录页面
-      window.location.href = '#/login';
+      showToast('🎉 注册成功！请登录', 'success');
+      // 注册成功后直接跳转到登录页面
+      setTimeout(() => {
+        window.location.href = '#/login';
+      }, 1000);
       
     } catch (err) {
-      alert('注册失败，请检查信息是否正确');
+      showToast('❌ 注册失败，请检查信息是否正确', 'error');
     }
     setLoading(false);
   };
@@ -1669,6 +1854,7 @@ function Tasks() {
   const [loading, setLoading] = React.useState(false);
   const [showCreateForm, setShowCreateForm] = React.useState(false);
   const [filter, setFilter] = React.useState('all');
+  const { showToast } = useToast();
 
   React.useEffect(() => { (async () => {
     try {
@@ -1680,7 +1866,10 @@ function Tasks() {
   })(); }, []);
 
   const create = async () => {
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      showToast('请填写任务标题', 'warning');
+      return;
+    }
     setLoading(true);
     try {
       await axios.post('/tasks', { 
@@ -1694,8 +1883,9 @@ function Tasks() {
       setShowCreateForm(false);
       const { data } = await axios.get('/tasks');
       setItems(data);
+      showToast('✅ 任务发布成功！', 'success');
     } catch (err) {
-      alert('发布任务失败');
+      showToast('❌ 发布任务失败', 'error');
     }
     setLoading(false);
   };
@@ -1705,9 +1895,9 @@ function Tasks() {
       await axios.post(`/tasks/${id}/complete`);
       const { data } = await axios.get('/tasks');
       setItems(data);
-      alert('🎉 任务完成！积分已到账');
+      showToast('🎉 任务完成！积分已到账', 'success');
     } catch (err) {
-      alert('完成任务失败');
+      showToast('❌ 完成任务失败', 'error');
     }
   };
 
@@ -2027,16 +2217,454 @@ function Announcements() {
   );
 }
 
-function App() {
+// 角色权限系统
+const ROLES = {
+  ADMIN: 'admin',           // 管理员 - 系统管理
+  MODERATOR: 'moderator',   // 版主 - 内容管理
+  MERCHANT: 'merchant',     // 商家 - 商业功能
+  VIP_USER: 'vip_user',     // VIP用户 - 高级功能
+  USER: 'user'              // 普通用户 - 基础功能
+};
+
+const PERMISSIONS = {
+  // 用户管理
+  MANAGE_USERS: 'manage_users',
+  VIEW_USERS: 'view_users',
+  
+  // 内容管理
+  MANAGE_POSTS: 'manage_posts',
+  DELETE_POSTS: 'delete_posts',
+  PIN_POSTS: 'pin_posts',
+  
+  // 群组管理
+  MANAGE_GROUPS: 'manage_groups',
+  DELETE_GROUPS: 'delete_groups',
+  
+  // 活动管理
+  MANAGE_ACTIVITIES: 'manage_activities',
+  APPROVE_ACTIVITIES: 'approve_activities',
+  
+  // 任务管理
+  MANAGE_TASKS: 'manage_tasks',
+  VERIFY_TASKS: 'verify_tasks',
+  
+  // 公告管理
+  MANAGE_ANNOUNCEMENTS: 'manage_announcements',
+  
+  // 积分管理
+  MANAGE_POINTS: 'manage_points',
+  TRANSFER_POINTS: 'transfer_points',
+  
+  // 商家功能
+  MANAGE_STORE: 'manage_store',
+  PUBLISH_PRODUCTS: 'publish_products',
+  
+  // 系统管理
+  SYSTEM_SETTINGS: 'system_settings',
+  VIEW_LOGS: 'view_logs'
+};
+
+// 角色权限映射
+const ROLE_PERMISSIONS = {
+  [ROLES.ADMIN]: [
+    PERMISSIONS.MANAGE_USERS,
+    PERMISSIONS.VIEW_USERS,
+    PERMISSIONS.MANAGE_POSTS,
+    PERMISSIONS.DELETE_POSTS,
+    PERMISSIONS.PIN_POSTS,
+    PERMISSIONS.MANAGE_GROUPS,
+    PERMISSIONS.DELETE_GROUPS,
+    PERMISSIONS.MANAGE_ACTIVITIES,
+    PERMISSIONS.APPROVE_ACTIVITIES,
+    PERMISSIONS.MANAGE_TASKS,
+    PERMISSIONS.VERIFY_TASKS,
+    PERMISSIONS.MANAGE_ANNOUNCEMENTS,
+    PERMISSIONS.MANAGE_POINTS,
+    PERMISSIONS.TRANSFER_POINTS,
+    PERMISSIONS.SYSTEM_SETTINGS,
+    PERMISSIONS.VIEW_LOGS
+  ],
+  [ROLES.MODERATOR]: [
+    PERMISSIONS.VIEW_USERS,
+    PERMISSIONS.MANAGE_POSTS,
+    PERMISSIONS.DELETE_POSTS,
+    PERMISSIONS.PIN_POSTS,
+    PERMISSIONS.MANAGE_GROUPS,
+    PERMISSIONS.MANAGE_ACTIVITIES,
+    PERMISSIONS.APPROVE_ACTIVITIES,
+    PERMISSIONS.MANAGE_TASKS,
+    PERMISSIONS.VERIFY_TASKS,
+    PERMISSIONS.MANAGE_ANNOUNCEMENTS
+  ],
+  [ROLES.MERCHANT]: [
+    PERMISSIONS.MANAGE_STORE,
+    PERMISSIONS.PUBLISH_PRODUCTS,
+    PERMISSIONS.TRANSFER_POINTS
+  ],
+  [ROLES.VIP_USER]: [
+    PERMISSIONS.TRANSFER_POINTS
+  ],
+  [ROLES.USER]: []
+};
+
+// 权限检查函数
+function hasPermission(user, permission) {
+  if (!user || !user.user_type) return false;
+  const userPermissions = ROLE_PERMISSIONS[user.user_type] || [];
+  return userPermissions.includes(permission);
+}
+
+// 角色检查函数
+function hasRole(user, role) {
+  return user && user.user_type === role;
+}
+
+// 获取角色标签
+function getRoleLabel(userType) {
+  const roleLabels = {
+    [ROLES.ADMIN]: '管理员',
+    [ROLES.MODERATOR]: '版主',
+    [ROLES.MERCHANT]: '商家',
+    [ROLES.VIP_USER]: 'VIP',
+    [ROLES.USER]: '用户'
+  };
+  return roleLabels[userType] || '用户';
+}
+
+// 获取角色颜色
+function getRoleColor(userType) {
+  const roleColors = {
+    [ROLES.ADMIN]: 'linear-gradient(135deg, #dc2626, #b91c1c)',
+    [ROLES.MODERATOR]: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+    [ROLES.MERCHANT]: 'linear-gradient(135deg, #059669, #047857)',
+    [ROLES.VIP_USER]: 'linear-gradient(135deg, #d97706, #b45309)',
+    [ROLES.USER]: 'linear-gradient(135deg, #6b7280, #4b5563)'
+  };
+  return roleColors[userType] || 'linear-gradient(135deg, #6b7280, #4b5563)';
+}
+
+// 权限路由守卫组件
+function ProtectedRoute({ children, requiredPermission, requiredRole, fallback = null }) {
   const auth = useAuth();
+  
+  if (!auth.user) {
+    return fallback || <Navigate to="/login" />;
+  }
+  
+  if (requiredPermission && !hasPermission(auth.user, requiredPermission)) {
+    return fallback || <div>权限不足</div>;
+  }
+  
+  if (requiredRole && !hasRole(auth.user, requiredRole)) {
+    return fallback || <div>角色不符</div>;
+  }
+  
+  return children;
+}
+
+function App() {
   return (
-    <BrowserRouter>
-      <Layout auth={auth} />
-    </BrowserRouter>
+    <AuthProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <AppContent />
+        </BrowserRouter>
+      </ToastProvider>
+    </AuthProvider>
   );
 }
 
-function Leaderboard() {
+function AppContent() {
+  const auth = useAuth();
+  return <Layout auth={auth} />;
+}
+
+// 商家商店组件
+function Store() {
+  const { showToast } = useToast();
+  const [products, setProducts] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [showCreateForm, setShowCreateForm] = React.useState(false);
+  const [form, setForm] = React.useState({
+    name: '',
+    description: '',
+    price: '',
+    category: 'food'
+  });
+
+  React.useEffect(() => {
+    // 这里应该调用商家商品API
+    setProducts([
+      { id: 1, name: '新鲜水果', description: '当季新鲜水果', price: 25, category: 'food' },
+      { id: 2, name: '家政服务', description: '专业家政清洁', price: 80, category: 'service' }
+    ]);
+  }, []);
+
+  const createProduct = async () => {
+    if (!form.name.trim() || !form.price) {
+      showToast('请填写完整信息', 'warning');
+      return;
+    }
+    setLoading(true);
+    try {
+      // 这里应该调用创建商品API
+      const newProduct = { id: Date.now(), ...form, price: parseFloat(form.price) };
+      setProducts(prev => [newProduct, ...prev]);
+      setForm({ name: '', description: '', price: '', category: 'food' });
+      setShowCreateForm(false);
+      showToast('✅ 商品发布成功！', 'success');
+    } catch (err) {
+      showToast('❌ 发布失败', 'error');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">🏪 商家商店</h2>
+          <p className="card-subtitle">管理您的商品和服务</p>
+        </div>
+        
+        <div className="card-content">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#f0f9ff', borderRadius: '12px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📦</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#0369a1' }}>{products.length}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>在售商品</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#f0fdf4', borderRadius: '12px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>💰</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#059669' }}>
+                ¥{products.reduce((sum, p) => sum + p.price, 0)}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>总价值</div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="card-footer">
+          <button 
+            className="btn btn-primary"
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            style={{ width: '100%' }}
+          >
+            {showCreateForm ? '取消发布' : '📝 发布商品'}
+          </button>
+        </div>
+      </div>
+
+      {/* 发布商品表单 */}
+      {showCreateForm && (
+        <div className="card" style={{ marginTop: '16px' }}>
+          <div className="card-header">
+            <h3 className="card-title">发布新商品</h3>
+          </div>
+          
+          <div className="card-content">
+            <div className="form-group">
+              <label className="form-label">商品名称</label>
+              <input 
+                type="text"
+                className="form-input"
+                placeholder="输入商品名称"
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+              />
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">商品描述</label>
+              <textarea 
+                className="form-textarea"
+                placeholder="详细描述您的商品"
+                value={form.description}
+                onChange={e => setForm({ ...form, description: e.target.value })}
+              />
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">价格 (元)</label>
+              <input 
+                type="number"
+                className="form-input"
+                placeholder="0.00"
+                value={form.price}
+                onChange={e => setForm({ ...form, price: e.target.value })}
+              />
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">分类</label>
+              <select 
+                className="form-select"
+                value={form.category}
+                onChange={e => setForm({ ...form, category: e.target.value })}
+              >
+                <option value="food">食品</option>
+                <option value="service">服务</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="card-footer">
+            <button 
+              className="btn btn-primary"
+              onClick={createProduct}
+              disabled={loading}
+              style={{ width: '100%' }}
+            >
+              {loading ? <span className="loading-spinner"></span> : '发布商品'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 商品列表 */}
+      <div className="card" style={{ marginTop: '16px' }}>
+        <div className="card-header">
+          <h3 className="card-title">我的商品</h3>
+        </div>
+        
+        <div className="card-content">
+          {products.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">📦</div>
+              <div className="empty-title">暂无商品</div>
+              <div className="empty-desc">发布您的第一个商品吧！</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '12px' }}>
+              {products.map(product => (
+                <div key={product.id} style={{
+                  padding: '16px',
+                  background: 'white',
+                  borderRadius: '12px',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: '600', fontSize: '1rem', marginBottom: '4px' }}>
+                        {product.name}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '8px' }}>
+                        {product.description}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                        分类: {product.category === 'food' ? '食品' : product.category === 'service' ? '服务' : '其他'}
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: '700', color: '#059669', fontSize: '1.1rem' }}>
+                      ¥{product.price}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 系统管理面板组件
+function AdminPanel() {
+  const { showToast } = useToast();
+  const [stats, setStats] = React.useState({
+    users: 0,
+    posts: 0,
+    tasks: 0,
+    activities: 0
+  });
+
+  React.useEffect(() => {
+    // 这里应该调用管理员统计API
+    setStats({
+      users: 156,
+      posts: 89,
+      tasks: 34,
+      activities: 12
+    });
+  }, []);
+
+  const adminActions = [
+    { icon: '👥', label: '用户管理', action: () => showToast('用户管理功能开发中', 'info') },
+    { icon: '📊', label: '数据统计', action: () => showToast('数据统计功能开发中', 'info') },
+    { icon: '⚙️', label: '系统设置', action: () => showToast('系统设置功能开发中', 'info') },
+    { icon: '📝', label: '日志查看', action: () => showToast('日志查看功能开发中', 'info') }
+  ];
+
+  return (
+    <div className="fade-in">
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">⚙️ 系统管理</h2>
+          <p className="card-subtitle">管理员专用功能</p>
+        </div>
+        
+        <div className="card-content">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#fef2f2', borderRadius: '12px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>👥</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#dc2626' }}>{stats.users}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>注册用户</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#f0f9ff', borderRadius: '12px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>💬</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#0369a1' }}>{stats.posts}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>社区动态</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#f0fdf4', borderRadius: '12px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>✅</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#059669' }}>{stats.tasks}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>活跃任务</div>
+            </div>
+            <div style={{ textAlign: 'center', padding: '16px', background: '#fffbeb', borderRadius: '12px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#d97706' }}>{stats.activities}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>进行中活动</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 管理功能 */}
+      <div className="card" style={{ marginTop: '16px' }}>
+        <div className="card-header">
+          <h3 className="card-title">管理功能</h3>
+        </div>
+        
+        <div className="card-content">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+            {adminActions.map((action, index) => (
+              <button
+                key={index}
+                className="btn btn-secondary"
+                onClick={action.action}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '16px',
+                  fontSize: '0.9rem'
+                }}
+              >
+                <span style={{ fontSize: '1.5rem' }}>{action.icon}</span>
+                <span>{action.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeaderboardPage() {
   const [users, setUsers] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [timeRange, setTimeRange] = React.useState('all');
@@ -2115,7 +2743,7 @@ function Leaderboard() {
     (async () => {
       setLoading(true);
       try {
-        const { data } = await axios.get('/leaderboard');
+        const { data } = await axios.get('/api/leaderboard');
         if (data.length === 0) {
           setUsers(sampleLeaderboard);
         } else {
@@ -2572,6 +3200,504 @@ function Leaderboard() {
               <h4 style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '4px' }}>注册奖励</h4>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>+50分</p>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 聊天功能组件
+function Chat() {
+  const { showToast } = useToast();
+  const [rooms, setRooms] = React.useState([]);
+  const [currentRoom, setCurrentRoom] = React.useState(null);
+  const [messages, setMessages] = React.useState([]);
+  const [newMessage, setNewMessage] = React.useState("");
+  const [showCreateRoom, setShowCreateRoom] = React.useState(false);
+  const [createRoomForm, setCreateRoomForm] = React.useState({
+    name: "",
+    description: "",
+    room_type: "group"
+  });
+
+  React.useEffect(() => {
+    loadChatRooms();
+  }, []);
+
+  React.useEffect(() => {
+    if (currentRoom) {
+      loadMessages(currentRoom.id);
+      // 定期刷新消息
+      const interval = setInterval(() => {
+        loadMessages(currentRoom.id);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [currentRoom]);
+
+  const loadChatRooms = async () => {
+    try {
+      const response = await axios.get("/chat/rooms");
+      setRooms(response.data);
+    } catch (err) {
+      showToast("❌ 加载聊天室失败", "error");
+    }
+  };
+
+  const loadMessages = async (roomId) => {
+    try {
+      const response = await axios.get(`/chat/rooms/${roomId}/messages`);
+      setMessages(response.data);
+    } catch (err) {
+      showToast("❌ 加载消息失败", "error");
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !currentRoom) return;
+    
+    try {
+      await axios.post(`/chat/rooms/${currentRoom.id}/messages`, {
+        content: newMessage,
+        message_type: "text"
+      });
+      setNewMessage("");
+      loadMessages(currentRoom.id);
+    } catch (err) {
+      showToast("❌ 发送消息失败", "error");
+    }
+  };
+
+  const createRoom = async () => {
+    if (!createRoomForm.name.trim()) {
+      showToast("请填写聊天室名称", "warning");
+      return;
+    }
+
+    try {
+      await axios.post("/chat/rooms", createRoomForm);
+      setCreateRoomForm({ name: "", description: "", room_type: "group" });
+      setShowCreateRoom(false);
+      loadChatRooms();
+      showToast("✅ 聊天室创建成功！", "success");
+    } catch (err) {
+      showToast("❌ 创建聊天室失败", "error");
+    }
+  };
+
+  const joinRoom = async (roomId) => {
+    try {
+      await axios.post(`/chat/rooms/${roomId}/join`);
+      loadChatRooms();
+      showToast("✅ 成功加入聊天室！", "success");
+    } catch (err) {
+      showToast("❌ 加入聊天室失败", "error");
+    }
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">💬 聊天室</h2>
+          <p className="card-subtitle">与邻居实时交流</p>
+        </div>
+        
+        <div className="card-content">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "16px", height: "600px" }}>
+            {/* 聊天室列表 */}
+            <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "16px", background: "#fafafa" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <h3 style={{ margin: 0, fontSize: "1.1rem" }}>聊天室</h3>
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => setShowCreateRoom(!showCreateRoom)}
+                  style={{ 
+                    fontSize: "0.85rem", 
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    fontWeight: "600"
+                  }}
+                >
+                  {showCreateRoom ? "取消" : "+ 创建"}
+                </button>
+              </div>
+              
+              {showCreateRoom && (
+                <div style={{ marginBottom: "16px", padding: "16px", background: "white", borderRadius: "8px", border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+                  <h4 style={{ margin: "0 0 12px 0", fontSize: "1rem", color: "#374151" }}>创建新聊天室</h4>
+                  <input
+                    type="text"
+                    placeholder="聊天室名称"
+                    value={createRoomForm.name}
+                    onChange={e => setCreateRoomForm({ ...createRoomForm, name: e.target.value })}
+                    style={{ width: "100%", marginBottom: "8px", padding: "10px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "0.9rem" }}
+                  />
+                  <textarea
+                    placeholder="聊天室描述（可选）"
+                    value={createRoomForm.description}
+                    onChange={e => setCreateRoomForm({ ...createRoomForm, description: e.target.value })}
+                    style={{ width: "100%", marginBottom: "12px", padding: "10px", borderRadius: "6px", border: "1px solid #d1d5db", resize: "vertical", fontSize: "0.9rem" }}
+                    rows="2"
+                  />
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button 
+                      className="btn btn-secondary"
+                      onClick={() => setShowCreateRoom(false)}
+                      style={{ flex: 1, padding: "8px 12px", fontSize: "0.85rem" }}
+                    >
+                      取消
+                    </button>
+                    <button 
+                      className="btn btn-primary"
+                      onClick={createRoom}
+                      style={{ flex: 1, padding: "8px 12px", fontSize: "0.85rem" }}
+                    >
+                      创建
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ maxHeight: "450px", overflowY: "auto" }}>
+                {rooms.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "32px", color: "#6b7280" }}>
+                    <div style={{ fontSize: "2rem", marginBottom: "8px" }}>💬</div>
+                    <div style={{ fontSize: "0.9rem" }}>暂无聊天室</div>
+                    <div style={{ fontSize: "0.8rem", marginTop: "4px" }}>点击上方按钮创建</div>
+                  </div>
+                ) : (
+                  rooms.map(room => (
+                    <div
+                      key={room.id}
+                      onClick={() => setCurrentRoom(room)}
+                      style={{
+                        padding: "12px",
+                        marginBottom: "8px",
+                        background: currentRoom?.id === room.id ? "#3b82f6" : "white",
+                        color: currentRoom?.id === room.id ? "white" : "inherit",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        border: currentRoom?.id === room.id ? "1px solid #3b82f6" : "1px solid #e5e7eb",
+                        boxShadow: currentRoom?.id === room.id ? "0 2px 8px rgba(59, 130, 246, 0.3)" : "0 1px 3px rgba(0,0,0,0.1)",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      <div style={{ fontWeight: "600", marginBottom: "4px", fontSize: "0.95rem" }}>{room.name}</div>
+                      <div style={{ fontSize: "0.8rem", opacity: currentRoom?.id === room.id ? 0.9 : 0.7, marginBottom: "6px" }}>{room.description}</div>
+                      <div style={{ fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "4px" }}>
+                        {room.user_role === "owner" ? "👑 群主" : "👤 成员"}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            {/* 聊天消息区域 */}
+            <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", display: "flex", flexDirection: "column", background: "white" }}>
+              {currentRoom ? (
+                <>
+                  {/* 聊天室标题 */}
+                  <div style={{ padding: "16px", borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
+                    <h3 style={{ margin: 0, fontSize: "1.1rem", color: "#1f2937" }}>{currentRoom.name}</h3>
+                    <div style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: "4px" }}>{currentRoom.description}</div>
+                  </div>
+                  
+                  {/* 消息列表 */}
+                  <div style={{ flex: 1, padding: "16px", overflowY: "auto", maxHeight: "350px" }}>
+                    {messages.map(message => (
+                      <div key={message.id} style={{ marginBottom: "12px" }}>
+                        <div style={{ fontSize: "0.85rem", color: "#6b7280", marginBottom: "4px" }}>
+                          {message.sender_id === 1 ? "管理员" : 
+                           message.sender_id === 2 ? "张三" :
+                           message.sender_id === 3 ? "李版主" :
+                           message.sender_id === 4 ? "王商家" :
+                           message.sender_id === 5 ? "赵VIP" : "用户"}
+                          {message.message_type === "system" && " (系统消息)"}
+                        </div>
+                        <div style={{
+                          padding: "8px 12px",
+                          background: message.message_type === "system" ? "#fef3c7" : "#f3f4f6",
+                          borderRadius: "12px",
+                          display: "inline-block",
+                          maxWidth: "80%"
+                        }}>
+                          {message.content}
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "4px" }}>
+                          {new Date(message.created_at).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* 发送消息 */}
+                  <div style={{ padding: "16px", borderTop: "1px solid #e5e7eb", background: "#fafafa" }}>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <input
+                        type="text"
+                        placeholder="输入消息..."
+                        value={newMessage}
+                        onChange={e => setNewMessage(e.target.value)}
+                        onKeyPress={e => e.key === "Enter" && sendMessage()}
+                        style={{ 
+                          flex: 1, 
+                          padding: "10px 12px", 
+                          borderRadius: "8px", 
+                          border: "1px solid #d1d5db",
+                          fontSize: "0.9rem",
+                          outline: "none"
+                        }}
+                      />
+                      <button 
+                        className="btn btn-primary"
+                        onClick={sendMessage}
+                        disabled={!newMessage.trim()}
+                        style={{ 
+                          padding: "10px 16px", 
+                          borderRadius: "8px",
+                          fontSize: "0.9rem",
+                          fontWeight: "600"
+                        }}
+                      >
+                        发送
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+                  <div style={{ textAlign: "center", color: "#6b7280" }}>
+                    <div style={{ fontSize: "3rem", marginBottom: "16px" }}>💬</div>
+                    <div>选择一个聊天室开始聊天</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 好友功能组件
+function Friends() {
+  const { showToast } = useToast();
+  const [friends, setFriends] = React.useState([]);
+  const [requests, setRequests] = React.useState([]);
+  const [searchResults, setSearchResults] = React.useState([]);
+  const [searchQuery, setSearchQuery] = React.useState("");
+
+  React.useEffect(() => {
+    loadFriends();
+    loadFriendRequests();
+  }, []);
+
+  const loadFriends = async () => {
+    try {
+      const response = await axios.get("/friends");
+      setFriends(response.data);
+    } catch (err) {
+      showToast("❌ 加载好友列表失败", "error");
+    }
+  };
+
+  const loadFriendRequests = async () => {
+    try {
+      const response = await axios.get("/friends/requests");
+      setRequests(response.data);
+    } catch (err) {
+      showToast("❌ 加载好友请求失败", "error");
+    }
+  };
+
+  const searchUsers = async () => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const response = await axios.get(`/users/search?q=${encodeURIComponent(searchQuery)}`);
+      setSearchResults(response.data);
+    } catch (err) {
+      showToast("❌ 搜索用户失败", "error");
+    }
+  };
+
+  const sendFriendRequest = async (friendId) => {
+    try {
+      await axios.post("/friends/request", { friend_id: friendId });
+      showToast("✅ 好友请求已发送！", "success");
+      searchUsers(); // 刷新搜索结果
+    } catch (err) {
+      showToast("❌ 发送好友请求失败", "error");
+    }
+  };
+
+  const acceptFriendRequest = async (requestId) => {
+    try {
+      await axios.post(`/friends/request/${requestId}/accept`);
+      showToast("✅ 好友请求已接受！", "success");
+      loadFriends();
+      loadFriendRequests();
+    } catch (err) {
+      showToast("❌ 接受好友请求失败", "error");
+    }
+  };
+
+  const rejectFriendRequest = async (requestId) => {
+    try {
+      await axios.post(`/friends/request/${requestId}/reject`);
+      showToast("✅ 好友请求已拒绝", "success");
+      loadFriendRequests();
+    } catch (err) {
+      showToast("❌ 拒绝好友请求失败", "error");
+    }
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">👥 好友</h2>
+          <p className="card-subtitle">管理好友关系</p>
+        </div>
+        
+        <div className="card-content">
+          {/* 搜索用户 */}
+          <div style={{ marginBottom: "24px" }}>
+            <h3 style={{ marginBottom: "12px" }}>搜索用户</h3>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input
+                type="text"
+                placeholder="输入用户名搜索..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyPress={e => e.key === "Enter" && searchUsers()}
+                style={{ flex: 1, padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db" }}
+              />
+              <button className="btn btn-primary" onClick={searchUsers}>
+                搜索
+              </button>
+            </div>
+            
+            {searchResults.length > 0 && (
+              <div style={{ marginTop: "12px" }}>
+                <h4 style={{ marginBottom: "8px" }}>搜索结果</h4>
+                {searchResults.map(user => (
+                  <div key={user.id} style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "12px",
+                    background: "#f9fafb",
+                    borderRadius: "8px",
+                    marginBottom: "8px"
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: "600" }}>{user.username}</div>
+                      <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+                        {user.real_name} • {user.user_type}
+                      </div>
+                    </div>
+                    <div>
+                      {user.friendship_status === "none" && (
+                        <button 
+                          className="btn btn-small"
+                          onClick={() => sendFriendRequest(user.id)}
+                        >
+                          添加好友
+                        </button>
+                      )}
+                      {user.friendship_status === "pending" && (
+                        <span style={{ color: "#f59e0b", fontSize: "0.85rem" }}>请求已发送</span>
+                      )}
+                      {user.friendship_status === "accepted" && (
+                        <span style={{ color: "#10b981", fontSize: "0.85rem" }}>已是好友</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {/* 好友请求 */}
+          {requests.length > 0 && (
+            <div style={{ marginBottom: "24px" }}>
+              <h3 style={{ marginBottom: "12px" }}>好友请求 ({requests.length})</h3>
+              {requests.map(request => (
+                <div key={request.id} style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "12px",
+                  background: "#fef3c7",
+                  borderRadius: "8px",
+                  marginBottom: "8px"
+                }}>
+                  <div>
+                    <div style={{ fontWeight: "600" }}>{request.username}</div>
+                    <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+                      {request.real_name} • {request.user_type}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button 
+                      className="btn btn-small btn-primary"
+                      onClick={() => acceptFriendRequest(request.id)}
+                    >
+                      接受
+                    </button>
+                    <button 
+                      className="btn btn-small btn-secondary"
+                      onClick={() => rejectFriendRequest(request.id)}
+                    >
+                      拒绝
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* 好友列表 */}
+          <div>
+            <h3 style={{ marginBottom: "12px" }}>我的好友 ({friends.length})</h3>
+            {friends.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px", color: "#6b7280" }}>
+                <div style={{ fontSize: "3rem", marginBottom: "16px" }}>👥</div>
+                <div>暂无好友，搜索用户添加好友吧！</div>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "8px" }}>
+                {friends.map(friend => (
+                  <div key={friend.id} style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "12px",
+                    background: "#f9fafb",
+                    borderRadius: "8px",
+                    border: "1px solid #e5e7eb"
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: "600" }}>{friend.username}</div>
+                      <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+                        {friend.real_name} • {friend.user_type}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "0.85rem", color: "#10b981" }}>
+                      ✓ 好友
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

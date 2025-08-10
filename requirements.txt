@@ -4,3 +4,9 @@ Flask-CORS
 Flask-JWT-Extended
 Flask-Bcrypt
 python-dotenv
+flask-socketio
+Pillow
+requests
+python-dateutil
+redis
+celery
